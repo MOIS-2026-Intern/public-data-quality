@@ -70,6 +70,27 @@ def _analyze_uploaded_file(
     )
 
 
+def _analyze_saved_file(
+    *,
+    uploaded_path: str,
+    display_filename: str,
+    use_llm_agents: bool,
+    openai_api_key: str | None,
+    llm_model: str | None,
+    llm_fast_model: str | None,
+    llm_strong_model: str | None,
+) -> dict:
+    return run_pipeline(
+        uploaded_dataset_csv=uploaded_path,
+        uploaded_dataset_name=display_filename,
+        use_llm_agents=use_llm_agents,
+        openai_api_key=openai_api_key,
+        llm_model=llm_model,
+        llm_fast_model=llm_fast_model,
+        llm_strong_model=llm_strong_model,
+    )
+
+
 def _batch_summary(items: list[dict]) -> dict:
     successful_results = [item["result"] for item in items if item.get("ok") and item.get("result")]
     failed_count = sum(1 for item in items if not item.get("ok"))
@@ -204,21 +225,40 @@ def create_app() -> Flask:
             if not uploaded_files:
                 return jsonify({"error": "dataset_file is required"}), 400
 
+            tmp_manager = tempfile.TemporaryDirectory(prefix="public_data_quality_upload_", dir=_runtime_tmp_dir())
+            saved_files = []
+            try:
+                for index, uploaded_file in enumerate(uploaded_files, start=1):
+                    display_filename = _uploaded_display_filename(uploaded_file.filename)
+                    filename = secure_filename(display_filename) or f"uploaded_dataset_{index}.csv"
+                    suffix = Path(filename).suffix or Path(display_filename).suffix or ".csv"
+                    uploaded_path = Path(tmp_manager.name) / f"dataset_{index}{suffix}"
+                    uploaded_file.save(uploaded_path)
+                    saved_files.append(
+                        {
+                            "filename": display_filename,
+                            "path": str(uploaded_path),
+                        }
+                    )
+            except Exception:
+                tmp_manager.cleanup()
+                raise
+
             @stream_with_context
             def generate():
-                total_files = len(uploaded_files)
+                total_files = len(saved_files)
                 items = []
-                yield _progress_event(
-                    "progress",
-                    progress=0,
-                    current=0,
-                    total=total_files,
-                    message="분석 준비 중",
-                )
+                try:
+                    yield _progress_event(
+                        "progress",
+                        progress=0,
+                        current=0,
+                        total=total_files,
+                        message="분석 준비 중",
+                    )
 
-                with tempfile.TemporaryDirectory(prefix="public_data_quality_upload_", dir=_runtime_tmp_dir()) as tmp_dir:
-                    for index, uploaded_file in enumerate(uploaded_files, start=1):
-                        display_filename = _uploaded_display_filename(uploaded_file.filename)
+                    for index, saved_file in enumerate(saved_files, start=1):
+                        display_filename = saved_file["filename"]
                         started_progress = int(((index - 1) / total_files) * 100)
                         yield _progress_event(
                             "progress",
@@ -230,10 +270,9 @@ def create_app() -> Flask:
                         )
 
                         try:
-                            result = _analyze_uploaded_file(
-                                uploaded_file=uploaded_file,
-                                tmp_dir=tmp_dir,
-                                index=index,
+                            result = _analyze_saved_file(
+                                uploaded_path=saved_file["path"],
+                                display_filename=display_filename,
                                 use_llm_agents=use_llm_agents,
                                 openai_api_key=openai_api_key,
                                 llm_model=llm_model,
@@ -270,21 +309,23 @@ def create_app() -> Flask:
                                 message=f"{display_filename} 실패",
                             )
 
-                if len(items) == 1 and items[0].get("ok") and items[0].get("result"):
-                    payload = items[0]["result"]
-                elif len(items) == 1:
-                    payload = {"error": items[0].get("error") or "분석 실패"}
-                else:
-                    payload = {"batch": True, "summary": _batch_summary(items), "results": items}
+                    if len(items) == 1 and items[0].get("ok") and items[0].get("result"):
+                        payload = items[0]["result"]
+                    elif len(items) == 1:
+                        payload = {"error": items[0].get("error") or "분석 실패"}
+                    else:
+                        payload = {"batch": True, "summary": _batch_summary(items), "results": items}
 
-                yield _progress_event(
-                    "final",
-                    progress=100,
-                    current=total_files,
-                    total=total_files,
-                    message="분석 완료",
-                    payload=payload,
-                )
+                    yield _progress_event(
+                        "final",
+                        progress=100,
+                        current=total_files,
+                        total=total_files,
+                        message="분석 완료",
+                        payload=payload,
+                    )
+                finally:
+                    tmp_manager.cleanup()
 
             return Response(
                 generate(),
