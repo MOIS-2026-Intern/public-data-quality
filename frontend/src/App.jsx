@@ -194,9 +194,18 @@ function App() {
         body,
       });
 
-      const payload = await response.json();
+      const responseText = await response.text();
+      let payload = null;
+      try {
+        payload = responseText ? JSON.parse(responseText) : null;
+      } catch {
+        payload = null;
+      }
       if (!response.ok) {
-        throw new Error(payload.error || "분석 요청에 실패했습니다.");
+        throw new Error(payload?.error || responseText || "분석 요청에 실패했습니다.");
+      }
+      if (!payload) {
+        throw new Error("분석 응답 형식이 올바르지 않습니다.");
       }
       setResult(payload);
     } catch (err) {

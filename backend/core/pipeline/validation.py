@@ -10,10 +10,10 @@ VALIDATION_STEP_NAME = "validator"
 def validate_quality(state: PipelineState) -> PipelineState:
     findings: list[ValidationFinding] = []
     traces = list(state.get("agent_traces", []))
-    preview_rows = state.get("preview_rows", [])
+    validation_rows = state.get("validation_rows") or state.get("preview_rows", [])
 
     for column in state["columns"]:
-        column_findings = validate_column(column, state["dataset_meta"], state["standard_terms"], preview_rows)
+        column_findings = validate_column(column, state["dataset_meta"], state["standard_terms"], validation_rows)
         findings.extend(column_findings)
         traces.append(
             pipeline_trace(
@@ -26,7 +26,7 @@ def validate_quality(state: PipelineState) -> PipelineState:
 
     relationship_findings = validate_dataset_relationships(
         state["columns"],
-        state.get("preview_rows", []),
+        validation_rows,
         state.get("relationship_candidates"),
     )
     findings.extend(relationship_findings)

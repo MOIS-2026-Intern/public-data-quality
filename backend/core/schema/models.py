@@ -108,6 +108,7 @@ class PipelineState(TypedDict, total=False):
     example_index: dict[str, list[str]]
     preview_headers: list[str]
     preview_rows: list[dict[str, str]]
+    validation_rows: list[dict[str, str]]
     relationship_candidates: list[dict[str, Any]]
     columns: list[ColumnProfile]
     findings: list[ValidationFinding]

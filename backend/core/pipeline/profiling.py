@@ -5,6 +5,7 @@ from collections import Counter
 
 from ..config.constants import (
     PROFILE_DISTINCT_TRACK_LIMIT,
+    PROFILE_SAMPLE_ROW_LIMIT,
     PROFILE_SAMPLE_VALUES_LIMIT,
     PROFILE_TOP_VALUE_LIMIT,
     PROFILE_TYPE_INFERENCE_THRESHOLD,
@@ -33,10 +34,14 @@ def profile_values(state: PipelineState) -> PipelineState:
 
     columns_by_name = {column.raw_name: column for column in state["columns"]}
     preview_rows: list[dict[str, str]] = []
+    validation_rows: list[dict[str, str]] = []
     stats = _initial_profile_stats(columns_by_name)
 
     for row in iter_uploaded_rows(uploaded_path):
-        preview_rows.append({key: (value or "") for key, value in row.items()})
+        normalized_row = {key: (value or "") for key, value in row.items()}
+        validation_rows.append(normalized_row)
+        if len(preview_rows) < PROFILE_SAMPLE_ROW_LIMIT:
+            preview_rows.append(normalized_row)
         _update_profile_stats(row, columns_by_name, stats)
 
     updated = _apply_profile_stats(columns_by_name, stats, traces)
@@ -48,6 +53,7 @@ def profile_values(state: PipelineState) -> PipelineState:
         "columns": updated,
         "preview_headers": list(columns_by_name.keys()),
         "preview_rows": preview_rows,
+        "validation_rows": validation_rows,
         "dataset_meta": dataset_meta,
         "agent_traces": traces,
     }

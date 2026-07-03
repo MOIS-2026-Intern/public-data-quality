@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import sys
 import tempfile
+import traceback
 import types
 from pathlib import Path, PureWindowsPath
 
@@ -74,7 +75,8 @@ def create_app() -> Flask:
             except ValueError as exc:
                 return jsonify({"error": str(exc)}), 400
             except Exception as exc:  # pragma: no cover
-                return jsonify({"error": str(exc)}), 500
+                traceback.print_exc()
+                return jsonify({"error": str(exc) or exc.__class__.__name__}), 500
 
         return jsonify({"error": "Use multipart/form-data with dataset_file"}), 400
 
