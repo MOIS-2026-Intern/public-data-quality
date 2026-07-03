@@ -1,8 +1,9 @@
 :root {
   font-family: "Pretendard Variable", Pretendard, "Noto Sans KR", "Apple SD Gothic Neo", sans-serif;
+  font-size: 14px;
   color: #10221b;
   background: #ffffff;
-  line-height: 1.5;
+  line-height: 1.45;
   font-weight: 400;
 }
 
@@ -30,7 +31,7 @@ input {
   max-width: 1680px;
   margin: 0 auto;
   min-height: 100vh;
-  padding: 20px 16px 32px;
+  padding: 14px 14px 24px;
   display: flex;
   flex-direction: column;
 }
@@ -40,15 +41,15 @@ input {
   align-items: center;
   justify-content: flex-start;
   flex-direction: row;
-  gap: 10px;
+  gap: 8px;
   margin-top: auto;
-  padding: 12px 0 0;
+  padding: 10px 0 0;
   color: #5a6b65;
 }
 
 .footer-logo {
-  width: 132px;
-  height: 48px;
+  width: 112px;
+  height: 40px;
   display: block;
   object-fit: contain;
 }
@@ -63,8 +64,8 @@ input {
   position: sticky;
   top: 0;
   z-index: 30;
-  margin: -20px -16px 20px;
-  padding: 14px 16px 8px;
+  margin: -14px -14px 16px;
+  padding: 10px 14px 6px;
   border-bottom: 1px solid rgba(16, 34, 27, 0.1);
   background: rgba(255, 255, 255, 0.94);
   backdrop-filter: blur(12px);
@@ -77,19 +78,19 @@ input {
 }
 
 .hero-copy {
-  padding: 4px 0 6px;
+  padding: 3px 0 5px;
 }
 
 .hero-brand {
   display: flex;
   align-items: center;
-  gap: 16px;
+  gap: 12px;
   min-width: 0;
 }
 
 .hero-logo {
-  width: 116px;
-  height: 51px;
+  width: 98px;
+  height: 43px;
   flex: 0 0 auto;
   display: block;
   object-fit: contain;
@@ -97,7 +98,7 @@ input {
 
 .hero-copy h1 {
   margin: 0;
-  font-size: clamp(1.35rem, 2.2vw, 2rem);
+  font-size: clamp(1.2rem, 1.8vw, 1.6rem);
   line-height: 1.1;
 }
 
@@ -112,7 +113,7 @@ input {
 .primary-button {
   border: none;
   border-radius: 8px;
-  padding: 10px 14px;
+  padding: 8px 12px;
   cursor: pointer;
   transition: transform 180ms ease, opacity 180ms ease;
 }
@@ -151,8 +152,8 @@ input {
 
 .content-grid {
   display: grid;
-  grid-template-columns: 320px minmax(0, 1fr);
-  gap: 24px;
+  grid-template-columns: 280px minmax(0, 1fr);
+  gap: 18px;
   flex: 1;
 }
 
@@ -163,7 +164,7 @@ input {
 
 .control-panel form {
   display: grid;
-  gap: 10px;
+  gap: 8px;
 }
 
 .control-panel label {
@@ -181,7 +182,7 @@ input {
   width: 100%;
   border: 1px solid rgba(16, 34, 27, 0.18);
   border-radius: 8px;
-  padding: 10px 12px;
+  padding: 8px 10px;
   background: rgba(255, 255, 255, 0.9);
 }
 
@@ -198,9 +199,9 @@ input {
   position: relative;
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
-  gap: 10px;
+  gap: 8px;
   align-items: center;
-  min-height: 42px;
+  min-height: 36px;
   cursor: pointer;
 }
 
@@ -227,7 +228,7 @@ input {
 }
 
 .file-picker-action {
-  padding: 8px 12px;
+  padding: 7px 10px;
   border: 1px solid rgba(17, 40, 77, 0.3);
   border-radius: 8px;
   background: #ffffff;
@@ -251,11 +252,11 @@ input {
 .summary-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 10px 16px;
+  gap: 8px 12px;
 }
 
 .summary-card {
-  padding: 0 0 10px;
+  padding: 0 0 8px;
   border-bottom: 1px solid rgba(16, 34, 27, 0.1);
 }
 
@@ -275,7 +276,7 @@ input {
   display: inline-flex;
   align-items: center;
   border-radius: 999px;
-  padding: 5px 10px;
+  padding: 4px 8px;
   font-size: 0.8rem;
   font-weight: 700;
   white-space: nowrap;
@@ -292,12 +293,12 @@ input {
 }
 
 .result-section {
-  margin-top: 18px;
+  margin-top: 14px;
 }
 
 .result-section h2 {
-  margin: 0 0 10px;
-  font-size: 1.15rem;
+  margin: 0 0 8px;
+  font-size: 1.05rem;
 }
 
 .table-wrap {
@@ -313,7 +314,7 @@ input {
 .preview-layout {
   display: grid;
   grid-template-columns: minmax(0, 3fr) minmax(280px, 0.72fr);
-  gap: 12px;
+  gap: 10px;
 }
 
 .preview-table-wrap,
@@ -323,7 +324,7 @@ input {
 
 .preview-table-wrap {
   overflow: auto;
-  max-height: 640px;
+  max-height: 580px;
 }
 
 .preview-table {
@@ -333,7 +334,7 @@ input {
 
 .preview-table th,
 .preview-table td {
-  padding: 8px 10px;
+  padding: 6px 8px;
   text-align: left;
   border-bottom: 1px solid rgba(16, 34, 27, 0.08);
   white-space: nowrap;
@@ -361,8 +362,8 @@ input {
 
 .preview-column-header {
   display: grid;
-  gap: 4px;
-  min-width: 138px;
+  gap: 3px;
+  min-width: 124px;
 }
 
 .preview-column-name {
@@ -373,8 +374,8 @@ input {
 .standard-mapping-badge {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
-  max-width: 170px;
+  gap: 4px;
+  max-width: 150px;
   color: #52625d;
   font-size: 0.74rem;
   line-height: 1.2;
@@ -427,7 +428,7 @@ input {
   z-index: 20;
   display: none;
   width: min(360px, 70vw);
-  padding: 10px 12px;
+  padding: 8px 10px;
   border: 1px solid rgba(127, 29, 29, 0.18);
   border-radius: 8px;
   background: #ffffff;
@@ -479,11 +480,11 @@ input {
 }
 
 .hover-panel {
-  padding: 14px;
+  padding: 12px;
   border: 1px solid rgba(16, 34, 27, 0.12);
   border-radius: 8px;
   background: #ffffff;
-  max-height: 640px;
+  max-height: 580px;
   overflow: auto;
 }
 
@@ -497,13 +498,13 @@ input {
 }
 
 .hover-detail-list {
-  margin-top: 10px;
+  margin-top: 8px;
   display: grid;
-  gap: 10px;
+  gap: 8px;
 }
 
 .hover-detail-item {
-  padding: 0 0 10px;
+  padding: 0 0 8px;
   border-bottom: 1px solid rgba(16, 34, 27, 0.08);
 }
 
@@ -524,14 +525,14 @@ input {
 
 .column-donut-panel {
   display: grid;
-  gap: 10px;
+  gap: 8px;
   margin-top: 6px;
 }
 
 .column-donut-chart {
   display: grid;
   place-items: center;
-  width: 128px;
+  width: 112px;
   aspect-ratio: 1;
   border-radius: 50%;
 }
@@ -539,7 +540,7 @@ input {
 .column-donut-center {
   display: grid;
   place-items: center;
-  width: 72px;
+  width: 64px;
   aspect-ratio: 1;
   border-radius: 50%;
   background: #ffffff;
@@ -589,7 +590,7 @@ table {
 
 th,
 td {
-  padding: 9px 10px;
+  padding: 7px 8px;
   text-align: left;
   border-bottom: 1px solid rgba(16, 34, 27, 0.08);
 }
@@ -604,7 +605,7 @@ td {
 
 .empty-state,
 .error-box {
-  padding: 14px;
+  padding: 12px;
 }
 
 .empty-state {
