@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 import sys
 import tempfile
@@ -20,12 +21,18 @@ try:
 except Exception as exc:  # pragma: no cover
     traceback.print_exc()
 
-    from flask import Flask, jsonify  # noqa: E402
-
     startup_error = str(exc) or exc.__class__.__name__
-    app = Flask(__name__)
 
-    @app.route("/api", methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"])
-    @app.route("/api/<path:_path>", methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"])
-    def api_startup_error(_path: str | None = None):
-        return jsonify({"error": "Backend startup failed", "detail": startup_error}), 500
+    def app(environ, start_response):
+        body = json.dumps(
+            {"error": "Backend startup failed", "detail": startup_error},
+            ensure_ascii=False,
+        ).encode("utf-8")
+        start_response(
+            "500 Internal Server Error",
+            [
+                ("Content-Type", "application/json; charset=utf-8"),
+                ("Content-Length", str(len(body))),
+            ],
+        )
+        return [body]
