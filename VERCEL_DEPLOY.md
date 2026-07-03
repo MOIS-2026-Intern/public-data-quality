@@ -36,3 +36,4 @@ npx vercel --prod
 - OpenAI API Key는 프론트 입력값으로 요청마다 전달됩니다. Vercel 환경변수에 저장하지 않아도 됩니다.
 - Vercel Python Function은 서버리스 환경이므로 생성 CSV는 배포 파일 시스템이 아니라 `/tmp/validation`에 기록됩니다.
 - 분석 시간이 길면 Vercel Function 제한에 걸릴 수 있습니다. 현재 `api/index.py`의 `maxDuration`은 60초로 설정했습니다.
+- `vercel.json`의 rewrites는 Vercel wildcard parameter 형식인 `/:path*`를 사용합니다.
