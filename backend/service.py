@@ -9,14 +9,12 @@ from typing import Any
 try:
     from .core.config.constants import (
         DEFAULT_META_CSV_NAME,
-        DEFAULT_STANDARD_TERMS_CSV_NAME,
         QUALITY_DETECTION_RESULTS_CSV_NAME,
         VALIDATION_OUTPUT_DIR_NAME,
     )
 except ImportError:  # pragma: no cover
     from core.config.constants import (
         DEFAULT_META_CSV_NAME,
-        DEFAULT_STANDARD_TERMS_CSV_NAME,
         QUALITY_DETECTION_RESULTS_CSV_NAME,
         VALIDATION_OUTPUT_DIR_NAME,
     )
@@ -48,12 +46,11 @@ def _build_graph(
     )
 
 
-def default_data_paths(base_dir: Path | None = None) -> tuple[Path, Path]:
+def default_data_paths(base_dir: Path | None = None) -> Path:
     base = base_dir or Path(__file__).resolve().parent
     data_dir = base / "data"
     meta_path = data_dir / DEFAULT_META_CSV_NAME
-    standard_path = data_dir / DEFAULT_STANDARD_TERMS_CSV_NAME
-    return meta_path, standard_path
+    return meta_path
 
 
 def validation_output_dir(base_dir: Path | None = None) -> Path:
@@ -175,7 +172,6 @@ def run_pipeline(
     dataset_id: str | None = None,
     dataset_name: str | None = None,
     meta_csv: str | None = None,
-    standard_terms_csv: str | None = None,
     uploaded_dataset_csv: str | None = None,
     uploaded_dataset_name: str | None = None,
     use_llm_agents: bool = False,
@@ -187,7 +183,7 @@ def run_pipeline(
     if not uploaded_dataset_csv and not dataset_id and not dataset_name:
         raise ValueError("uploaded_dataset_csv, dataset_id, or dataset_name 중 하나는 필요합니다.")
 
-    default_meta, default_standard = default_data_paths()
+    default_meta = default_data_paths()
     graph = _build_graph(
         openai_api_key=openai_api_key,
         llm_model=llm_model,
@@ -199,7 +195,6 @@ def run_pipeline(
             "dataset_id": dataset_id,
             "dataset_name": dataset_name,
             "meta_csv_path": str(Path(meta_csv) if meta_csv else default_meta),
-            "standard_terms_path": str(Path(standard_terms_csv) if standard_terms_csv else default_standard),
             "uploaded_dataset_path": str(Path(uploaded_dataset_csv)) if uploaded_dataset_csv else None,
             "uploaded_dataset_name": uploaded_dataset_name,
             "use_llm_agents": use_llm_agents,

@@ -31,7 +31,6 @@ def schema_routing_prompt(
     top_values: list[dict[str, Any]],
     allowed_tags: list[str],
     allowed_rules: list[str],
-    standard_terms: list[str],
 ) -> str:
     return f"""
 You are a public-data schema routing agent.
@@ -39,7 +38,6 @@ Return strict JSON with keys:
 - normalized_name: string
 - semantic_tags: list[string]
 - assigned_rules: list[string]
-- standard_candidates: list[string]
 - confidence: float between 0 and 1
 - reason: string
 
@@ -64,14 +62,8 @@ Instructions:
 - assigned_rules must use only these values: {allowed_rules}
 - Columns whose names end with 명, 명칭, 기관명, 시설명, 경찰서명, 부서명, or 담당자명 are descriptive names, not row identifiers.
 - Do not assign identifier semantic_tags or duplicate_data rules to descriptive name columns unless the column name explicitly contains 고유번호, 식별번호, 일련번호, 관리번호, ID, or 아이디.
-- standard_candidates should contain the best matching canonical standard terms only.
-- If there is no confident standard term match, return an empty list for standard_candidates.
-- assigned_rules may be non-empty even when standard_candidates is empty if the column meaning is still clear.
 - confidence should reflect routing confidence for this column.
 - reason should be a short Korean sentence.
-
-Known standard terms sample:
-{json.dumps(standard_terms, ensure_ascii=False)}
 """
 
 
@@ -125,7 +117,6 @@ def semantic_profile_prompt(
     column_raw_name: str,
     column_normalized_name: str,
     semantic_tags: list[str],
-    standard_candidates: list[str],
     column_inferred_type: str,
     sample_values: list[Any],
     top_values: list[dict[str, Any]],
@@ -156,7 +147,6 @@ Column:
 - raw_name: {column_raw_name}
 - normalized_name: {column_normalized_name}
 - semantic_tags: {semantic_tags}
-- standard_candidates: {standard_candidates}
 - inferred_type: {column_inferred_type}
 - sample_values: {sample_values}
 - top_values: {top_values}

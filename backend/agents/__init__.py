@@ -4,9 +4,7 @@ from .resolution import (
     LLMColumnResolver,
     LLMRoutingAgent,
     LLMSemanticProfiler,
-    RAGResolverAgent,
     SemanticProfilingAgent,
-    should_run_rag,
 )
 from .validation.categorical import CategoricalSemanticValidationAgent, LLMCategoricalValueValidator
 
@@ -39,10 +37,9 @@ def build_agents(
         "reference_loader": ReferenceLoaderAgent(),
         "schema_parser": SchemaParsingAgent(),
         "rule_router": LLMRoutingAgent(column_resolver=column_resolver),
-        "rag_resolver": RAGResolverAgent(),
         "semantic_profiler": SemanticProfilingAgent(semantic_profiler=semantic_profiler),
         "categorical_semantic_validator": CategoricalSemanticValidationAgent(validator=categorical_validator),
     }
 
 
-__all__ = ["build_agents", "should_run_rag"]
+__all__ = ["build_agents"]

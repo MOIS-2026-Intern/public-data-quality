@@ -132,12 +132,11 @@ def create_app() -> Flask:
     @app.get("/api/index")
     @app.get("/api/index.py")
     def health():
-        meta_path, standard_path = default_data_paths()
+        meta_path = default_data_paths()
         return jsonify(
             {
                 "status": "ok",
                 "meta_csv": str(meta_path),
-                "standard_terms_csv": str(standard_path),
             }
         )
 

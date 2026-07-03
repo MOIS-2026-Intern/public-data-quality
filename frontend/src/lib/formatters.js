@@ -13,21 +13,6 @@ export function formatTopValues(topValues) {
   return topValues.map(([value, count]) => `${value} (${count})`).join(", ");
 }
 
-export function formatMatchType(value) {
-  const labels = {
-    exact: "정확 일치",
-    synonym: "동의어 일치",
-    partial: "부분 일치",
-    rule_only: "규칙 기반",
-    rag_resolved: "표준 용어 보정",
-    llm_routed: "의미 기반 매핑",
-    llm_resolved: "의미 기반 보정",
-    llm_unmatched: "미매핑",
-    unmatched: "미매핑",
-  };
-  return labels[value] || "-";
-}
-
 export function formatCriterionName(value) {
   const labels = {
     required_value: "필수값 존재 여부",
@@ -56,7 +41,6 @@ export function formatCriterionName(value) {
 export function formatRuleId(value) {
   const labels = {
     manual_review_required: "수동 검토 필요",
-    standard_term_missing: "표준용어 매핑 필요",
     required_value: "필수값 누락 검증",
     garbled_text: "깨진 글자 검증",
     whitespace_special_characters: "공백/특수문자 검증",

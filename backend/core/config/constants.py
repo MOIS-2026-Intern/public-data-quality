@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 DEFAULT_META_CSV_NAME = "행정안전부_공공데이터포털 목록 메타정보_20250531.csv"
-DEFAULT_STANDARD_TERMS_CSV_NAME = "행정안전부_공공데이터 공통표준용어_20251101.csv"
 VALIDATION_OUTPUT_DIR_NAME = "validation"
 QUALITY_DETECTION_RESULTS_CSV_NAME = "quality_detection_results.csv"
 
@@ -63,7 +62,7 @@ VALIDATION_CRITERIA = {
             "date_domain": "날짜 데이터를 저장하는 컬럼의 데이터 값이 유효한 범위를 벗어나는 오류를 측정",
             "number_domain": "정해진 규칙 등에 따라 관리되는 번호 도메인 데이터 오류를 측정",
             "boolean_domain": "여부/유무 등 2값 분류 도메인 컬럼의 유효값 범위 이탈 오류를 측정",
-            "code_domain": "동일한 의미의 데이터가 표준으로 정의한 코드값으로 일관되게 적용되지 못한 오류를 측정",
+            "code_domain": "코드 또는 분류값이 컬럼 의미와 일관되게 적용되는지를 측정",
             "categorical_semantic_domain": "범주형 문자열 컬럼의 고유값이 동일 도메인 체계와 의미적으로 일관되게 사용되는지를 측정",
             "amount_domain": "숫자로 저장된 금액 도메인 컬럼의 값이 유효한 범위를 벗어나는 오류를 측정",
             "quantity_domain": "숫자로 저장된 수량 도메인 컬럼의 값이 유효한 범위를 벗어나는 오류를 측정",
@@ -79,10 +78,8 @@ LLM_STRONG_MODEL = "gpt-4o"
 LLM_DEFAULT_MODEL = LLM_FAST_MODEL
 OPENAI_DEFAULT_API_URL = "https://api.openai.com/v1/chat/completions"
 LLM_REQUEST_TIMEOUT_SECONDS = 120
-LLM_STANDARD_TERM_SAMPLE_SIZE = 200
 LLM_RESOLUTION_CONFIDENCE = 0.78
 LLM_STRONG_FALLBACK_CONFIDENCE = 0.72
-LLM_SEMANTIC_PROFILE_TRIGGER_MATCH_TYPES = {"partial", "rule_only", "rag_resolved", "llm_resolved", "unmatched"}
 LLM_SEMANTIC_PROFILE_ALWAYS_TRIGGER_TAGS = {"address"}
 LLM_SEMANTIC_PROFILE_ALWAYS_TRIGGER_NAME_TOKENS = {
     "주소",

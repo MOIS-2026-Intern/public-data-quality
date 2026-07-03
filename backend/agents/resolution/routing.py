@@ -103,25 +103,15 @@ class LLMRoutingAgent(BaseAgent):
         for tag in rule_tags:
             rule_ids.extend(TAG_RULE_MAP.get(tag, []))
         column.assigned_rules = list(dict.fromkeys(rule_ids))
-        column.standard_match_type = "unmatched"
-        column.rag_required = True
         return column
 
-    def _apply_rule_route(self, state: PipelineState, column: ColumnProfile) -> tuple[ColumnProfile, str]:
-        column = self._apply_rule_fallback(column)
-        if column.normalized_name in state["standard_terms"]:
-            column.standard_candidates = [column.normalized_name]
-            column.standard_match_type = "exact"
-            column.routing_confidence = max(column.routing_confidence, 0.96)
-            column.rag_required = False
-            column.rag_evidence = [f"rule_exact:{column.normalized_name}"]
-            return column, "rule_exact"
-        return column, "rule_fallback"
+    def _apply_rule_route(self, column: ColumnProfile) -> tuple[ColumnProfile, str]:
+        return self._apply_rule_fallback(column), "rule_fallback"
 
     def _apply_llm_route(self, state: PipelineState, column: ColumnProfile, payload: dict[str, Any]) -> ColumnProfile:
         allowed_tags = set(TAG_RULE_MAP)
         allowed_rules = self._allowed_rule_ids()
-        standard_terms = state["standard_terms"]
+        del state
 
         normalized_name = payload.get("normalized_name")
         if isinstance(normalized_name, str) and normalized_name.strip():
@@ -153,22 +143,12 @@ class LLMRoutingAgent(BaseAgent):
                 assigned_rules.extend(TAG_RULE_MAP.get(tag, []))
         column.assigned_rules = list(dict.fromkeys(assigned_rules))
 
-        standard_candidates = [
-            name for name in self._string_list(payload.get("standard_candidates"))
-            if name in standard_terms
-        ]
-        column.standard_candidates = list(dict.fromkeys(standard_candidates))
         column.routing_confidence = max(column.routing_confidence, self._confidence(payload.get("confidence")))
-        column.standard_match_type = "llm_resolved" if column.standard_candidates else "rule_only"
-        column.rag_required = not bool(column.standard_candidates)
-        if payload.get("reason"):
-            column.rag_evidence = [f"llm_route:{str(payload['reason']).strip()}"]
         return column
 
     def run(self, state: PipelineState) -> PipelineState:
         traces = list(state.get("agent_traces", []))
         updated: list[ColumnProfile] = []
-        rag_count = 0
         use_llm = (
             bool(state.get("use_llm_agents"))
             and self.column_resolver is not None
@@ -177,12 +157,12 @@ class LLMRoutingAgent(BaseAgent):
         relationship_candidates: list[dict[str, Any]] | None = None
 
         for column in state["columns"]:
-            column, route_source = self._apply_rule_route(state, column)
+            column, route_source = self._apply_rule_route(column)
             llm_error = ""
             llm_model = ""
             llm_stage = ""
             llm_escalated = ""
-            if use_llm and column.rag_required:
+            if use_llm:
                 payload = self.column_resolver.resolve(state, column)
                 if payload:
                     column = self._apply_llm_route(state, column, payload)
@@ -196,9 +176,6 @@ class LLMRoutingAgent(BaseAgent):
                     llm_model = getattr(self.column_resolver, "last_model_name", "")
                     llm_stage = getattr(self.column_resolver, "last_stage", "")
 
-            if column.rag_required:
-                rag_count += 1
-
             traces.append(
                 self.trace(
                     action="route_rules",
@@ -206,8 +183,7 @@ class LLMRoutingAgent(BaseAgent):
                     detail=(
                         f"source={route_source}, "
                         f"rules={column.assigned_rules}, "
-                        f"confidence={column.routing_confidence:.2f}, rag={column.rag_required}, "
-                        f"match_type={column.standard_match_type}, candidates={column.standard_candidates}, "
+                        f"confidence={column.routing_confidence:.2f}, "
                         f"model={llm_model}, stage={llm_stage}, escalated={llm_escalated}, "
                         f"llm_error={llm_error}"
                     ),
@@ -229,7 +205,7 @@ class LLMRoutingAgent(BaseAgent):
                 )
             )
 
-        traces.append(self.trace(action="routing_summary", detail=f"rag_required={rag_count}"))
+        traces.append(self.trace(action="routing_summary", detail=f"columns={len(updated)}"))
         result: PipelineState = {
             "columns": updated,
             "agent_traces": traces,

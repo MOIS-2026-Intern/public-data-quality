@@ -5,19 +5,6 @@ from typing import Any, Literal, TypedDict
 from pydantic import BaseModel, Field
 
 
-class StandardTerm(BaseModel):
-    name: str
-    description: str = ""
-    abbreviation: str = ""
-    domain_name: str = ""
-    allowed_values: str = ""
-    storage_format: str = ""
-    expression_format: str = ""
-    code_name: str = ""
-    owner_org: str = ""
-    synonyms: list[str] = Field(default_factory=list)
-
-
 class DatasetMeta(BaseModel):
     dataset_id: str
     dataset_name: str
@@ -40,12 +27,8 @@ class ColumnProfile(BaseModel):
     unit: str | None = None
     tokens: list[str] = Field(default_factory=list)
     semantic_tags: list[str] = Field(default_factory=list)
-    standard_candidates: list[str] = Field(default_factory=list)
-    standard_match_type: str | None = None
     routing_confidence: float = 0.0
     assigned_rules: list[str] = Field(default_factory=list)
-    rag_required: bool = False
-    rag_evidence: list[str] = Field(default_factory=list)
     total_count: int | None = None
     non_empty_count: int = 0
     null_count: int = 0
@@ -93,7 +76,6 @@ class AgentTrace(BaseModel):
 
 class PipelineState(TypedDict, total=False):
     meta_csv_path: str
-    standard_terms_path: str
     uploaded_dataset_path: str
     uploaded_dataset_name: str
     use_llm_agents: bool
@@ -103,8 +85,6 @@ class PipelineState(TypedDict, total=False):
     dataset_id: str
     dataset_name: str
     dataset_meta: DatasetMeta
-    standard_terms: dict[str, StandardTerm]
-    synonym_index: dict[str, str]
     example_index: dict[str, list[str]]
     preview_headers: list[str]
     preview_rows: list[dict[str, str]]

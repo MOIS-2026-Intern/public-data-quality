@@ -117,38 +117,6 @@ function ColumnValueDonut({ column }) {
   );
 }
 
-function standardMappingText(column) {
-  if (!column) return "표준용어 정보 없음";
-  const candidate = column.standard_candidates?.[0];
-  if (!candidate) return "표준용어 미매핑";
-  return candidate;
-}
-
-function normalizedColumnName(value) {
-  return String(value || "").replace(/\s+/g, "").trim();
-}
-
-function hasDifferentStandardTerm(column) {
-  const candidate = column?.standard_candidates?.[0];
-  if (!candidate) return false;
-  return normalizedColumnName(candidate) !== normalizedColumnName(column.raw_name);
-}
-
-function StandardMappingBadge({ column }) {
-  if (!hasDifferentStandardTerm(column)) return null;
-  const candidate = column?.standard_candidates?.[0];
-
-  return (
-    <span
-      className="standard-mapping-badge is-mapped"
-      title={standardMappingText(column)}
-    >
-      <span className="standard-mapping-prefix">표준</span>
-      <span className="standard-mapping-term">{candidate}</span>
-    </span>
-  );
-}
-
 export function PreviewPanel({
   headers,
   rows,
@@ -161,7 +129,6 @@ export function PreviewPanel({
   const safeFindings = findings || [];
   const [hoveredColumnName, setHoveredColumnName] = useState(safeHeaders[0] || "");
   const hoveredColumn = safeColumns.find((column) => column.raw_name === hoveredColumnName) || null;
-  const columnByName = new Map(safeColumns.map((column) => [column.raw_name, column]));
   const cellIssueMap = buildCellIssueMap(safeFindings);
 
   useEffect(() => {
@@ -184,11 +151,10 @@ export function PreviewPanel({
                   key={header}
                   className={hoveredColumnName === header ? "is-column-hovered" : ""}
                   onMouseEnter={() => setHoveredColumnName(header)}
-                  title={standardMappingText(columnByName.get(header))}
+                  title={header}
                 >
                   <span className="preview-column-header">
                     <span className="preview-column-name">{header}</span>
-                    <StandardMappingBadge column={columnByName.get(header)} />
                   </span>
                 </th>
               ))}
@@ -299,10 +265,6 @@ export function PreviewPanel({
               <div className="hover-detail-value">
                 {hoveredColumn.semantic_profile_llm_reasons?.join(", ") || "-"}
               </div>
-            </div>
-            <div className="hover-detail-item">
-              <div className="hover-detail-key">표준용어 후보</div>
-              <div className="hover-detail-value">{hoveredColumn.standard_candidates?.[0] || "-"}</div>
             </div>
             <div className="hover-detail-item">
               <div className="hover-detail-key">샘플값</div>

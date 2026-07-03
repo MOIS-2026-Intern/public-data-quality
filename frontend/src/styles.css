@@ -483,33 +483,6 @@ input {
   text-overflow: ellipsis;
 }
 
-.standard-mapping-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  max-width: 150px;
-  color: #52625d;
-  font-size: 0.74rem;
-  line-height: 1.2;
-}
-
-.standard-mapping-badge.is-mapped {
-  color: #11284d;
-}
-
-.standard-mapping-prefix {
-  flex: 0 0 auto;
-  color: #697872;
-  font-weight: 600;
-}
-
-.standard-mapping-term {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-weight: 700;
-}
-
 .preview-table tbody tr {
   transition: background-color 140ms ease;
 }

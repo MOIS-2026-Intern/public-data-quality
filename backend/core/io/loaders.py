@@ -13,7 +13,7 @@ from ..config.constants import (
     UPLOAD_SERVICE_TYPE,
     UPLOAD_UPDATE_CYCLE,
 )
-from ..schema.models import DatasetMeta, StandardTerm
+from ..schema.models import DatasetMeta
 
 
 def _stringify_cell(value: object) -> str:
@@ -138,44 +138,6 @@ def _split_csv_list(value: str) -> list[str]:
 def _file_cache_key(file_path: str | Path) -> tuple[str, int]:
     path = Path(file_path).resolve()
     return str(path), path.stat().st_mtime_ns
-
-
-def load_standard_terms(csv_path: str | Path) -> tuple[dict[str, StandardTerm], dict[str, str]]:
-    terms, synonyms = _load_standard_terms_cached(*_file_cache_key(csv_path))
-    return dict(terms), dict(synonyms)
-
-
-@lru_cache(maxsize=4)
-def _load_standard_terms_cached(path_key: str, _mtime_ns: int) -> tuple[dict[str, StandardTerm], dict[str, str]]:
-    path = Path(path_key)
-    terms: dict[str, StandardTerm] = {}
-    synonyms: dict[str, str] = {}
-
-    with path.open("r", encoding="utf-8-sig", newline="") as handle:
-        reader = csv.DictReader(handle)
-        for row in reader:
-            name = (row.get("공통표준용어명") or "").strip()
-            if not name:
-                continue
-            synonym_list = _split_csv_list(row.get("용어 이음동의어 목록", ""))
-            term = StandardTerm(
-                name=name,
-                description=(row.get("공통표준용어설명") or "").strip(),
-                abbreviation=(row.get("공통표준용어영문약어명") or "").strip(),
-                domain_name=(row.get("공통표준도메인명") or "").strip(),
-                allowed_values=(row.get("허용값") or "").strip(),
-                storage_format=(row.get("저장 형식") or "").strip(),
-                expression_format=(row.get("표현 형식") or "").strip(),
-                code_name=(row.get("행정표준코드명") or "").strip(),
-                owner_org=(row.get("소관기관명") or "").strip(),
-                synonyms=synonym_list,
-            )
-            terms[name] = term
-            synonyms[name] = name
-            for synonym in synonym_list:
-                synonyms[synonym] = name
-
-    return terms, synonyms
 
 
 def load_dataset_meta(

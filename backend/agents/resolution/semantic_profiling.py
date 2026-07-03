@@ -165,7 +165,6 @@ class LLMSemanticProfiler:
                 column_raw_name=column.raw_name,
                 column_normalized_name=column.normalized_name,
                 semantic_tags=column.semantic_tags,
-                standard_candidates=column.standard_candidates,
                 column_inferred_type=column.inferred_primitive_type,
                 sample_values=column.sample_values,
                 top_values=column.top_values,

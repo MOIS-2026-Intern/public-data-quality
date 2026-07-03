@@ -13,7 +13,7 @@ def validate_quality(state: PipelineState) -> PipelineState:
     validation_rows = state.get("validation_rows") or state.get("preview_rows", [])
 
     for column in state["columns"]:
-        column_findings = validate_column(column, state["dataset_meta"], state["standard_terms"], validation_rows)
+        column_findings = validate_column(column, state["dataset_meta"], validation_rows)
         findings.extend(column_findings)
         traces.append(
             pipeline_trace(

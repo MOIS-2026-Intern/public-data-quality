@@ -10,7 +10,6 @@ try:
         LLM_FAST_MODEL,
         LLM_STRONG_FALLBACK_CONFIDENCE,
         LLM_STRONG_MODEL,
-        LLM_STANDARD_TERM_SAMPLE_SIZE,
         TAG_RULE_MAP,
         VALIDATION_CRITERIA,
     )
@@ -27,7 +26,6 @@ except ImportError:  # pragma: no cover
         LLM_FAST_MODEL,
         LLM_STRONG_FALLBACK_CONFIDENCE,
         LLM_STRONG_MODEL,
-        LLM_STANDARD_TERM_SAMPLE_SIZE,
         TAG_RULE_MAP,
         VALIDATION_CRITERIA,
     )
@@ -190,7 +188,6 @@ class LLMColumnResolver:
             return None
 
         dataset_meta = state["dataset_meta"]
-        standard_terms = list(state["standard_terms"].keys())[:LLM_STANDARD_TERM_SAMPLE_SIZE]
         allowed_tags = sorted(TAG_RULE_MAP.keys())
         allowed_rules = sorted(
             {
@@ -215,7 +212,6 @@ class LLMColumnResolver:
                 top_values=column.top_values,
                 allowed_tags=allowed_tags,
                 allowed_rules=allowed_rules,
-                standard_terms=standard_terms,
             ),
             system_prompt=SCHEMA_ROUTING_SYSTEM_PROMPT,
             difficult=self._routing_needs_strong,

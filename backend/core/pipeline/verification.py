@@ -10,17 +10,11 @@ VERIFICATION_STEP_NAME = "verifier"
 
 
 def verify_results(state: PipelineState) -> PipelineState:
-    coverage = 0
     repairs = 0
     manual_review = 0
     traces = list(state.get("agent_traces", []))
-    match_breakdown = Counter()
 
     for column in state["columns"]:
-        if column.standard_candidates:
-            coverage += 1
-            column.verification_notes.append("표준용어 후보 존재")
-        match_breakdown[column.standard_match_type or "unmatched"] += 1
         if column.repair_suggestion:
             repairs += 1
             column.verification_notes.append("수정 제안 생성")
@@ -30,10 +24,8 @@ def verify_results(state: PipelineState) -> PipelineState:
 
     summary = _build_quality_summary(
         state,
-        coverage=coverage,
         repairs=repairs,
         manual_review=manual_review,
-        match_breakdown=match_breakdown,
     )
     traces.append(
         pipeline_trace(
@@ -49,10 +41,8 @@ def verify_results(state: PipelineState) -> PipelineState:
 def _build_quality_summary(
     state: PipelineState,
     *,
-    coverage: int,
     repairs: int,
     manual_review: int,
-    match_breakdown: Counter,
 ) -> dict:
     findings = state["findings"]
     return {
@@ -61,8 +51,6 @@ def _build_quality_summary(
         "provider_name": state["dataset_meta"].provider_name,
         "column_count": len(state["columns"]),
         "row_count": state["dataset_meta"].total_rows,
-        "standard_term_coverage": round(coverage / max(1, len(state["columns"])), 4),
-        "standard_term_coverage_breakdown": dict(match_breakdown),
         "repair_suggestion_count": repairs,
         "manual_review_count": manual_review,
         "finding_count": len(findings),

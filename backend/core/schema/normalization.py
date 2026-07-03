@@ -9,7 +9,7 @@ PARENS_RE = re.compile(r"\(([^()]*)\)")
 MULTISPACE_RE = re.compile(r"\s+")
 
 
-def normalize_column_name(raw_name: str, synonym_index: dict[str, str]) -> tuple[str, str | None]:
+def normalize_column_name(raw_name: str) -> tuple[str, str | None]:
     unit = None
     name = raw_name.strip()
     paren_match = PARENS_RE.search(name)
@@ -21,7 +21,6 @@ def normalize_column_name(raw_name: str, synonym_index: dict[str, str]) -> tuple
 
     name = MULTISPACE_RE.sub(" ", name).strip()
     name = NORMALIZATION_SYNONYM_PATCHES.get(name, name)
-    name = synonym_index.get(name, name)
     return name, unit
 
 
@@ -32,9 +31,8 @@ def tokenize_korean_label(label: str) -> list[str]:
 def build_column_profile(
     raw_name: str,
     source: str,
-    synonym_index: dict[str, str],
 ) -> ColumnProfile:
-    normalized_name, unit = normalize_column_name(raw_name, synonym_index)
+    normalized_name, unit = normalize_column_name(raw_name)
     return ColumnProfile(
         raw_name=raw_name,
         normalized_name=normalized_name,
@@ -42,5 +40,4 @@ def build_column_profile(
         unit=unit,
         tokens=tokenize_korean_label(normalized_name),
         routing_confidence=DEFAULT_COLUMN_ROUTING_CONFIDENCE,
-        rag_required=True,
     )
