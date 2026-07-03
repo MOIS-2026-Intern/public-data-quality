@@ -8,11 +8,30 @@ from .tracing import pipeline_trace
 
 VERIFICATION_STEP_NAME = "verifier"
 
+STRICT_ISSUE_RULE_IDS = {
+    "garbled_text",
+    "whitespace_issue",
+    "special_character_issue",
+    "date_domain",
+    "boolean_domain",
+    "number_domain",
+    "amount_domain",
+    "quantity_domain",
+    "rate_domain",
+    "time_sequence_consistency",
+    "precedence_accuracy",
+    "logical_consistency",
+    "calculation_formula",
+    "reference_relation",
+    "address_region_prefix_mismatch",
+}
+
 
 def verify_results(state: PipelineState) -> PipelineState:
     repairs = 0
     manual_review = 0
     traces = list(state.get("agent_traces", []))
+    findings = _strict_issue_findings(state.get("findings", []))
 
     for column in state["columns"]:
         if column.repair_suggestion:
@@ -24,6 +43,7 @@ def verify_results(state: PipelineState) -> PipelineState:
 
     summary = _build_quality_summary(
         state,
+        findings=findings,
         repairs=repairs,
         manual_review=manual_review,
     )
@@ -35,16 +55,26 @@ def verify_results(state: PipelineState) -> PipelineState:
             detail=json.dumps(summary, ensure_ascii=False),
         )
     )
-    return {"summary": summary, "columns": state["columns"], "agent_traces": traces}
+    return {"summary": summary, "columns": state["columns"], "findings": findings, "agent_traces": traces}
+
+
+def _strict_issue_findings(findings: list) -> list:
+    return [
+        finding
+        for finding in findings
+        if finding.finding_type == "issue"
+        and bool(finding.row_indexes)
+        and finding.rule_id in STRICT_ISSUE_RULE_IDS
+    ]
 
 
 def _build_quality_summary(
     state: PipelineState,
     *,
+    findings: list,
     repairs: int,
     manual_review: int,
 ) -> dict:
-    findings = state["findings"]
     return {
         "dataset_id": state["dataset_meta"].dataset_id,
         "dataset_name": state["dataset_meta"].dataset_name,
