@@ -13,7 +13,6 @@ try:
         QUALITY_DETECTION_RESULTS_CSV_NAME,
         VALIDATION_OUTPUT_DIR_NAME,
     )
-    from .graph import build_graph
 except ImportError:  # pragma: no cover
     from core.config.constants import (
         DEFAULT_META_CSV_NAME,
@@ -21,13 +20,32 @@ except ImportError:  # pragma: no cover
         QUALITY_DETECTION_RESULTS_CSV_NAME,
         VALIDATION_OUTPUT_DIR_NAME,
     )
-    from graph import build_graph
 
 
 DETECTION_MATRIX_METADATA_FIELDS = [
     "dataset_name",
     "row_index",
 ]
+
+
+def _build_graph(
+    *,
+    openai_api_key: str | None,
+    llm_model: str | None,
+    llm_fast_model: str | None,
+    llm_strong_model: str | None,
+):
+    try:
+        from .graph import build_graph
+    except ImportError:  # pragma: no cover
+        from graph import build_graph
+
+    return build_graph(
+        openai_api_key=openai_api_key,
+        llm_model=llm_model,
+        llm_fast_model=llm_fast_model,
+        llm_strong_model=llm_strong_model,
+    )
 
 
 def default_data_paths(base_dir: Path | None = None) -> tuple[Path, Path]:
@@ -170,7 +188,7 @@ def run_pipeline(
         raise ValueError("uploaded_dataset_csv, dataset_id, or dataset_name 중 하나는 필요합니다.")
 
     default_meta, default_standard = default_data_paths()
-    graph = build_graph(
+    graph = _build_graph(
         openai_api_key=openai_api_key,
         llm_model=llm_model,
         llm_fast_model=llm_fast_model,

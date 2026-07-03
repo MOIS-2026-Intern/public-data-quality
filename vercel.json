@@ -10,7 +10,8 @@
     },
     "backend": {
       "root": "backend/",
-      "entrypoint": "web:app"
+      "framework": "flask",
+      "entrypoint": "main:app"
     }
   },
   "rewrites": [
