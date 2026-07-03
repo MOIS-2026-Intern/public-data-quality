@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import sys
 import tempfile
 import traceback
@@ -7,6 +8,7 @@ import types
 from pathlib import Path, PureWindowsPath
 
 from flask import Flask, jsonify, make_response, request, send_from_directory
+from werkzeug.exceptions import HTTPException
 from werkzeug.utils import secure_filename
 
 if __package__ in (None, ""):  # pragma: no cover
@@ -28,8 +30,25 @@ def _uploaded_display_filename(filename: str | None) -> str:
     return PureWindowsPath(raw_filename).name or "uploaded_dataset.csv"
 
 
+def _runtime_tmp_dir() -> str | None:
+    if os.getenv("VERCEL"):
+        return "/tmp"
+    return None
+
+
 def create_app() -> Flask:
     app = Flask(__name__, static_folder=str(Path(__file__).resolve().parent.parent / "frontend" / "dist"))
+
+    @app.errorhandler(HTTPException)
+    def handle_http_error(exc: HTTPException):
+        if request.path.startswith("/api/"):
+            return jsonify({"error": exc.description or exc.name}), exc.code or 500
+        return exc
+
+    @app.errorhandler(Exception)
+    def handle_unexpected_error(exc: Exception):
+        traceback.print_exc()
+        return jsonify({"error": str(exc) or exc.__class__.__name__}), 500
 
     @app.get("/api/health")
     def health():
@@ -44,7 +63,10 @@ def create_app() -> Flask:
 
     @app.post("/api/analyze")
     def analyze():
-        if request.content_type and request.content_type.startswith("multipart/form-data"):
+        try:
+            if not (request.content_type and request.content_type.startswith("multipart/form-data")):
+                return jsonify({"error": "Use multipart/form-data with dataset_file"}), 400
+
             use_llm_agents = request.form.get("use_llm_agents", "false").lower() == "true"
             openai_api_key = (request.form.get("openai_api_key") or "").strip() or None
             llm_model = request.form.get("llm_model") or None
@@ -55,30 +77,27 @@ def create_app() -> Flask:
             if not uploaded_file:
                 return jsonify({"error": "dataset_file is required"}), 400
 
-            try:
-                display_filename = _uploaded_display_filename(uploaded_file.filename)
-                filename = secure_filename(display_filename) or "uploaded_dataset.csv"
-                suffix = Path(filename).suffix or Path(display_filename).suffix or ".csv"
-                with tempfile.TemporaryDirectory(prefix="public_data_quality_upload_") as tmp_dir:
-                    uploaded_path = Path(tmp_dir) / f"dataset{suffix}"
-                    uploaded_file.save(uploaded_path)
-                    result = run_pipeline(
-                        uploaded_dataset_csv=str(uploaded_path),
-                        uploaded_dataset_name=display_filename,
-                        use_llm_agents=use_llm_agents,
-                        openai_api_key=openai_api_key,
-                        llm_model=llm_model,
-                        llm_fast_model=llm_fast_model,
-                        llm_strong_model=llm_strong_model,
-                    )
-                    return jsonify(result)
-            except ValueError as exc:
-                return jsonify({"error": str(exc)}), 400
-            except Exception as exc:  # pragma: no cover
-                traceback.print_exc()
-                return jsonify({"error": str(exc) or exc.__class__.__name__}), 500
-
-        return jsonify({"error": "Use multipart/form-data with dataset_file"}), 400
+            display_filename = _uploaded_display_filename(uploaded_file.filename)
+            filename = secure_filename(display_filename) or "uploaded_dataset.csv"
+            suffix = Path(filename).suffix or Path(display_filename).suffix or ".csv"
+            with tempfile.TemporaryDirectory(prefix="public_data_quality_upload_", dir=_runtime_tmp_dir()) as tmp_dir:
+                uploaded_path = Path(tmp_dir) / f"dataset{suffix}"
+                uploaded_file.save(uploaded_path)
+                result = run_pipeline(
+                    uploaded_dataset_csv=str(uploaded_path),
+                    uploaded_dataset_name=display_filename,
+                    use_llm_agents=use_llm_agents,
+                    openai_api_key=openai_api_key,
+                    llm_model=llm_model,
+                    llm_fast_model=llm_fast_model,
+                    llm_strong_model=llm_strong_model,
+                )
+                return jsonify(result)
+        except ValueError as exc:
+            return jsonify({"error": str(exc)}), 400
+        except Exception as exc:  # pragma: no cover
+            traceback.print_exc()
+            return jsonify({"error": str(exc) or exc.__class__.__name__}), 500
 
     @app.get("/", defaults={"path": ""})
     @app.get("/<path:path>")
