@@ -1,1 +1,6 @@
--r backend/requirements.txt
+langgraph
+pydantic
+flask
+python-dotenv
+openpyxl
+xlrd
