@@ -10,9 +10,9 @@ from pathlib import Path
 if os.getenv("VERCEL"):
     tempfile.tempdir = "/tmp"
 
-BACKEND_DIR = Path(__file__).resolve().parents[1] / "backend"
-if str(BACKEND_DIR) not in sys.path:
-    sys.path.insert(0, str(BACKEND_DIR))
+PROJECT_DIR = Path(__file__).resolve().parents[1]
+if str(PROJECT_DIR) not in sys.path:
+    sys.path.insert(0, str(PROJECT_DIR))
 
 
 def _startup_failed_app(detail: str):
@@ -35,7 +35,7 @@ def _startup_failed_app(detail: str):
 
 def _load_app():
     try:
-        from web import create_app  # noqa: E402
+        from backend.web import create_app  # noqa: E402
 
         return create_app()
     except Exception as exc:  # pragma: no cover
