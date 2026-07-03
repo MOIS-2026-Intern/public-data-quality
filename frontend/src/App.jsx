@@ -18,6 +18,7 @@ function ControlPanel({
   llmStrongModel,
   setLlmStrongModel,
   loading,
+  progress,
   error,
   onSubmit,
 }) {
@@ -85,8 +86,32 @@ function ControlPanel({
           {loading ? "분석 중..." : "분석 실행"}
         </button>
       </form>
+      <LoadingProgress progress={progress} />
       {error ? <div className="error-box">{error}</div> : null}
     </section>
+  );
+}
+
+function LoadingProgress({ progress }) {
+  if (!progress?.visible) {
+    return null;
+  }
+
+  const percent = Math.max(0, Math.min(100, Number(progress.percent) || 0));
+  const statusText = progress.message || "분석 중";
+  const countText =
+    progress.total > 0 ? `${Math.min(progress.current || 0, progress.total)} / ${progress.total}` : "";
+
+  return (
+    <div className="progress-panel" aria-live="polite">
+      <div className="progress-meta">
+        <span>{statusText}</span>
+        <strong>{countText || `${percent}%`}</strong>
+      </div>
+      <div className="progress-track" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow={percent}>
+        <div className="progress-fill" style={{ width: `${percent}%` }} />
+      </div>
+    </div>
   );
 }
 
@@ -244,11 +269,83 @@ function App() {
   const [result, setResult] = useState(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [progress, setProgress] = useState({ visible: false, percent: 0, message: "", current: 0, total: 0 });
+
+  function updateProgress(event) {
+    setProgress({
+      visible: true,
+      percent: Number(event.progress) || 0,
+      message: event.message || "분석 중",
+      current: Number(event.current) || 0,
+      total: Number(event.total) || datasetFiles.length,
+    });
+  }
+
+  async function parseAnalyzeStream(response) {
+    if (!response.body) {
+      const responseText = await response.text();
+      return responseText ? JSON.parse(responseText) : null;
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    let finalPayload = null;
+    let streamError = "";
+
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split("\n");
+      buffer = lines.pop() || "";
+
+      for (const line of lines) {
+        if (!line.trim()) continue;
+        const event = JSON.parse(line);
+        if (event.type === "progress" || event.type === "file_done" || event.type === "file_error") {
+          updateProgress(event);
+        }
+        if (event.type === "file_error" && event.error) {
+          streamError = event.error;
+        }
+        if (event.type === "final") {
+          updateProgress(event);
+          finalPayload = event.payload;
+        }
+      }
+    }
+
+    if (buffer.trim()) {
+      const event = JSON.parse(buffer);
+      if (event.type === "final") {
+        updateProgress(event);
+        finalPayload = event.payload;
+      }
+    }
+
+    if (finalPayload?.error) {
+      throw new Error(finalPayload.error);
+    }
+    if (!finalPayload && streamError) {
+      throw new Error(streamError);
+    }
+    return finalPayload;
+  }
 
   async function handleAnalyze(event) {
     event.preventDefault();
     setLoading(true);
     setError("");
+    setResult(null);
+    setProgress({
+      visible: true,
+      percent: 0,
+      message: "업로드 중",
+      current: 0,
+      total: datasetFiles.length,
+    });
 
     try {
       if (datasetFiles.length === 0) {
@@ -265,21 +362,23 @@ function App() {
       if (llmFastModel) body.append("llm_fast_model", llmFastModel);
       if (llmStrongModel) body.append("llm_strong_model", llmStrongModel);
 
-      const response = await fetch("/api/analyze", {
+      const response = await fetch("/api/analyze-stream", {
         method: "POST",
         body,
       });
 
-      const responseText = await response.text();
-      let payload = null;
-      try {
-        payload = responseText ? JSON.parse(responseText) : null;
-      } catch {
-        payload = null;
-      }
       if (!response.ok) {
+        const responseText = await response.text();
+        let payload = null;
+        try {
+          payload = responseText ? JSON.parse(responseText) : null;
+        } catch {
+          payload = null;
+        }
         throw new Error(payload?.error || responseText || "분석 요청에 실패했습니다.");
       }
+
+      const payload = await parseAnalyzeStream(response);
       if (!payload) {
         throw new Error("분석 응답 형식이 올바르지 않습니다.");
       }
@@ -287,6 +386,11 @@ function App() {
     } catch (err) {
       setError(err.message);
       setResult(null);
+      setProgress((currentProgress) => ({
+        ...currentProgress,
+        visible: true,
+        message: err.message || "분석 실패",
+      }));
     } finally {
       setLoading(false);
     }
@@ -314,6 +418,7 @@ function App() {
           llmStrongModel={llmStrongModel}
           setLlmStrongModel={setLlmStrongModel}
           loading={loading}
+          progress={progress}
           error={error}
           onSubmit={handleAnalyze}
         />

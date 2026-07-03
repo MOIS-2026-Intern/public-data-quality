@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 import sys
 import tempfile
@@ -7,7 +8,7 @@ import traceback
 import types
 from pathlib import Path, PureWindowsPath
 
-from flask import Flask, jsonify, make_response, request, send_from_directory
+from flask import Flask, Response, jsonify, make_response, request, send_from_directory, stream_with_context
 from werkzeug.datastructures import FileStorage
 from werkzeug.exceptions import HTTPException
 from werkzeug.utils import secure_filename
@@ -85,6 +86,10 @@ def _batch_summary(items: list[dict]) -> dict:
             int(result.get("summary", {}).get("manual_review_finding_count") or 0) for result in successful_results
         ),
     }
+
+
+def _progress_event(event_type: str, **payload) -> str:
+    return json.dumps({"type": event_type, **payload}, ensure_ascii=False) + "\n"
 
 
 def create_app() -> Flask:
@@ -176,6 +181,116 @@ def create_app() -> Flask:
                 summary = _batch_summary(items)
                 status_code = 200 if summary["success_count"] else 400
                 return jsonify({"batch": True, "summary": summary, "results": items}), status_code
+        except ValueError as exc:
+            return jsonify({"error": str(exc)}), 400
+        except Exception as exc:  # pragma: no cover
+            traceback.print_exc()
+            return jsonify({"error": str(exc) or exc.__class__.__name__}), 500
+
+    @app.post("/api/analyze-stream")
+    @app.post("/analyze-stream")
+    def analyze_stream():
+        try:
+            if not (request.content_type and request.content_type.startswith("multipart/form-data")):
+                return jsonify({"error": "Use multipart/form-data with dataset_file"}), 400
+
+            use_llm_agents = request.form.get("use_llm_agents", "false").lower() == "true"
+            openai_api_key = (request.form.get("openai_api_key") or "").strip() or None
+            llm_model = request.form.get("llm_model") or None
+            llm_fast_model = request.form.get("llm_fast_model") or None
+            llm_strong_model = request.form.get("llm_strong_model") or None
+            uploaded_files = _uploaded_files()
+
+            if not uploaded_files:
+                return jsonify({"error": "dataset_file is required"}), 400
+
+            @stream_with_context
+            def generate():
+                total_files = len(uploaded_files)
+                items = []
+                yield _progress_event(
+                    "progress",
+                    progress=0,
+                    current=0,
+                    total=total_files,
+                    message="분석 준비 중",
+                )
+
+                with tempfile.TemporaryDirectory(prefix="public_data_quality_upload_", dir=_runtime_tmp_dir()) as tmp_dir:
+                    for index, uploaded_file in enumerate(uploaded_files, start=1):
+                        display_filename = _uploaded_display_filename(uploaded_file.filename)
+                        started_progress = int(((index - 1) / total_files) * 100)
+                        yield _progress_event(
+                            "progress",
+                            progress=started_progress,
+                            current=index - 1,
+                            total=total_files,
+                            filename=display_filename,
+                            message=f"{display_filename} 분석 중",
+                        )
+
+                        try:
+                            result = _analyze_uploaded_file(
+                                uploaded_file=uploaded_file,
+                                tmp_dir=tmp_dir,
+                                index=index,
+                                use_llm_agents=use_llm_agents,
+                                openai_api_key=openai_api_key,
+                                llm_model=llm_model,
+                                llm_fast_model=llm_fast_model,
+                                llm_strong_model=llm_strong_model,
+                            )
+                            items.append({"ok": True, "filename": display_filename, "result": result})
+                            completed_progress = int((index / total_files) * 100)
+                            yield _progress_event(
+                                "file_done",
+                                progress=completed_progress,
+                                current=index,
+                                total=total_files,
+                                filename=display_filename,
+                                message=f"{display_filename} 완료",
+                            )
+                        except Exception as exc:  # pragma: no cover
+                            traceback.print_exc()
+                            items.append(
+                                {
+                                    "ok": False,
+                                    "filename": display_filename,
+                                    "error": str(exc) or exc.__class__.__name__,
+                                }
+                            )
+                            completed_progress = int((index / total_files) * 100)
+                            yield _progress_event(
+                                "file_error",
+                                progress=completed_progress,
+                                current=index,
+                                total=total_files,
+                                filename=display_filename,
+                                error=str(exc) or exc.__class__.__name__,
+                                message=f"{display_filename} 실패",
+                            )
+
+                if len(items) == 1 and items[0].get("ok") and items[0].get("result"):
+                    payload = items[0]["result"]
+                elif len(items) == 1:
+                    payload = {"error": items[0].get("error") or "분석 실패"}
+                else:
+                    payload = {"batch": True, "summary": _batch_summary(items), "results": items}
+
+                yield _progress_event(
+                    "final",
+                    progress=100,
+                    current=total_files,
+                    total=total_files,
+                    message="분석 완료",
+                    payload=payload,
+                )
+
+            return Response(
+                generate(),
+                mimetype="application/x-ndjson",
+                headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+            )
         except ValueError as exc:
             return jsonify({"error": str(exc)}), 400
         except Exception as exc:  # pragma: no cover
