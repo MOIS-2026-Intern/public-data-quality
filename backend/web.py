@@ -51,6 +51,8 @@ def create_app() -> Flask:
         return jsonify({"error": str(exc) or exc.__class__.__name__}), 500
 
     @app.get("/api/health")
+    @app.get("/api/index")
+    @app.get("/api/index.py")
     def health():
         meta_path, standard_path = default_data_paths()
         return jsonify(
@@ -62,6 +64,8 @@ def create_app() -> Flask:
         )
 
     @app.post("/api/analyze")
+    @app.post("/api/index")
+    @app.post("/api/index.py")
     def analyze():
         try:
             if not (request.content_type and request.content_type.startswith("multipart/form-data")):
