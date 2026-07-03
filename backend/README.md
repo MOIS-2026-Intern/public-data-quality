@@ -6,7 +6,6 @@ Backend service for public data quality analysis and validation workflows.
 
 - `agents/`: domain-specific workflow and validation agents
 - `core/`: shared core logic
-- `data/`: local sample and reference datasets
 - `graph.py`, `service.py`, `web.py`: application entry modules
 
 ## Notes

@@ -196,27 +196,3 @@ def load_uploaded_dataset_meta(file_path: str | Path, dataset_name: str | None =
         update_cycle=UPLOAD_UPDATE_CYCLE,
         total_rows=None,
     )
-
-
-def build_example_index(meta_csv_path: str | Path, limit: int = 5000) -> dict[str, list[str]]:
-    examples = _build_example_index_cached(*_file_cache_key(meta_csv_path), limit)
-    return {key: list(values) for key, values in examples.items()}
-
-
-@lru_cache(maxsize=4)
-def _build_example_index_cached(path_key: str, _mtime_ns: int, limit: int = 5000) -> dict[str, list[str]]:
-    path = Path(path_key)
-    examples: dict[str, list[str]] = {}
-    seen = 0
-    with path.open("r", encoding="utf-8-sig", newline="") as handle:
-        reader = csv.DictReader(handle)
-        for row in reader:
-            dataset_name = (row.get("목록명") or "").strip()
-            for field in _split_csv_list(row.get("출력결과", "")):
-                bucket = examples.setdefault(field, [])
-                if len(bucket) < 5:
-                    bucket.append(dataset_name)
-            seen += 1
-            if seen >= limit:
-                break
-    return examples

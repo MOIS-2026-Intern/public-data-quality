@@ -8,13 +8,11 @@ from typing import Any
 
 try:
     from .core.config.constants import (
-        DEFAULT_META_CSV_NAME,
         QUALITY_DETECTION_RESULTS_CSV_NAME,
         VALIDATION_OUTPUT_DIR_NAME,
     )
 except ImportError:  # pragma: no cover
     from core.config.constants import (
-        DEFAULT_META_CSV_NAME,
         QUALITY_DETECTION_RESULTS_CSV_NAME,
         VALIDATION_OUTPUT_DIR_NAME,
     )
@@ -44,13 +42,6 @@ def _build_graph(
         llm_fast_model=llm_fast_model,
         llm_strong_model=llm_strong_model,
     )
-
-
-def default_data_paths(base_dir: Path | None = None) -> Path:
-    base = base_dir or Path(__file__).resolve().parent
-    data_dir = base / "data"
-    meta_path = data_dir / DEFAULT_META_CSV_NAME
-    return meta_path
 
 
 def validation_output_dir(base_dir: Path | None = None) -> Path:
@@ -182,8 +173,9 @@ def run_pipeline(
 ) -> dict:
     if not uploaded_dataset_csv and not dataset_id and not dataset_name:
         raise ValueError("uploaded_dataset_csv, dataset_id, or dataset_name 중 하나는 필요합니다.")
+    if not uploaded_dataset_csv and not meta_csv:
+        raise ValueError("dataset_id 또는 dataset_name으로 분석하려면 meta_csv가 필요합니다.")
 
-    default_meta = default_data_paths()
     graph = _build_graph(
         openai_api_key=openai_api_key,
         llm_model=llm_model,
@@ -194,7 +186,7 @@ def run_pipeline(
         {
             "dataset_id": dataset_id,
             "dataset_name": dataset_name,
-            "meta_csv_path": str(Path(meta_csv) if meta_csv else default_meta),
+            "meta_csv_path": str(Path(meta_csv)) if meta_csv else None,
             "uploaded_dataset_path": str(Path(uploaded_dataset_csv)) if uploaded_dataset_csv else None,
             "uploaded_dataset_name": uploaded_dataset_name,
             "use_llm_agents": use_llm_agents,

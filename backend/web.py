@@ -24,7 +24,7 @@ if __package__ in (None, ""):  # pragma: no cover
         sys.modules[package_name] = package
     __package__ = package_name
 
-from .service import default_data_paths, run_pipeline
+from .service import run_pipeline
 
 
 def _uploaded_display_filename(filename: str | None) -> str:
@@ -132,11 +132,9 @@ def create_app() -> Flask:
     @app.get("/api/index")
     @app.get("/api/index.py")
     def health():
-        meta_path = default_data_paths()
         return jsonify(
             {
                 "status": "ok",
-                "meta_csv": str(meta_path),
             }
         )
 

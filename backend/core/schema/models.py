@@ -85,7 +85,6 @@ class PipelineState(TypedDict, total=False):
     dataset_id: str
     dataset_name: str
     dataset_meta: DatasetMeta
-    example_index: dict[str, list[str]]
     preview_headers: list[str]
     preview_rows: list[dict[str, str]]
     validation_rows: list[dict[str, str]]
