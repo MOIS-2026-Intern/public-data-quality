@@ -14,18 +14,11 @@ BACKEND_DIR = Path(__file__).resolve().parents[1] / "backend"
 if str(BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(BACKEND_DIR))
 
-try:
-    from web import create_app  # noqa: E402
 
-    app = create_app()
-except Exception as exc:  # pragma: no cover
-    traceback.print_exc()
-
-    startup_error = str(exc) or exc.__class__.__name__
-
-    def app(environ, start_response):
+def _startup_failed_app(detail: str):
+    def failed_app(environ, start_response):
         body = json.dumps(
-            {"error": "Backend startup failed", "detail": startup_error},
+            {"error": "Backend startup failed", "detail": detail},
             ensure_ascii=False,
         ).encode("utf-8")
         start_response(
@@ -36,3 +29,18 @@ except Exception as exc:  # pragma: no cover
             ],
         )
         return [body]
+
+    return failed_app
+
+
+def _load_app():
+    try:
+        from web import create_app  # noqa: E402
+
+        return create_app()
+    except Exception as exc:  # pragma: no cover
+        traceback.print_exc()
+        return _startup_failed_app(str(exc) or exc.__class__.__name__)
+
+
+app = _load_app()

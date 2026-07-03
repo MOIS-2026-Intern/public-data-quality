@@ -3,16 +3,11 @@ from __future__ import annotations
 import json
 import traceback
 
-try:
-    from web import app
-except Exception as exc:  # pragma: no cover
-    traceback.print_exc()
 
-    startup_error = str(exc) or exc.__class__.__name__
-
-    def app(environ, start_response):
+def _startup_failed_app(detail: str):
+    def failed_app(environ, start_response):
         body = json.dumps(
-            {"error": "Backend startup failed", "detail": startup_error},
+            {"error": "Backend startup failed", "detail": detail},
             ensure_ascii=False,
         ).encode("utf-8")
         start_response(
@@ -23,3 +18,18 @@ except Exception as exc:  # pragma: no cover
             ],
         )
         return [body]
+
+    return failed_app
+
+
+def _load_app():
+    try:
+        from web import app as flask_app
+
+        return flask_app
+    except Exception as exc:  # pragma: no cover
+        traceback.print_exc()
+        return _startup_failed_app(str(exc) or exc.__class__.__name__)
+
+
+app = _load_app()
