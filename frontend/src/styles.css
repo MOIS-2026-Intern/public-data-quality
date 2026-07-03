@@ -249,6 +249,26 @@ input {
   box-shadow: 0 0 0 3px rgba(17, 40, 77, 0.12);
 }
 
+.selected-files {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.selected-file {
+  max-width: 100%;
+  overflow: hidden;
+  padding: 4px 7px;
+  border: 1px solid rgba(16, 34, 27, 0.12);
+  border-radius: 8px;
+  color: #4f615a;
+  font-size: 0.78rem;
+  font-weight: 500;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .summary-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -269,6 +289,56 @@ input {
   margin-top: 4px;
   font-weight: 700;
   font-size: 1.03rem;
+  overflow-wrap: anywhere;
+}
+
+.result-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 12px 0 10px;
+}
+
+.result-tab {
+  max-width: 220px;
+  overflow: hidden;
+  border: 1px solid rgba(17, 40, 77, 0.16);
+  border-radius: 8px;
+  padding: 6px 9px;
+  background: #ffffff;
+  color: #11284d;
+  cursor: pointer;
+  font-size: 0.86rem;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.result-tab.is-active {
+  border-color: #11284d;
+  background: #11284d;
+  color: #ffffff;
+}
+
+.failed-files {
+  display: grid;
+  gap: 6px;
+  margin: 8px 0 12px;
+}
+
+.failed-file {
+  display: grid;
+  gap: 2px;
+  padding: 8px 10px;
+  border: 1px solid rgba(176, 37, 37, 0.2);
+  border-radius: 8px;
+  background: #fff8f8;
+  color: #7a1f1f;
+}
+
+.failed-file strong,
+.failed-file span {
+  min-width: 0;
   overflow-wrap: anywhere;
 }
 

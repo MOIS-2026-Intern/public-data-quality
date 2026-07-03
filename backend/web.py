@@ -8,6 +8,7 @@ import types
 from pathlib import Path, PureWindowsPath
 
 from flask import Flask, jsonify, make_response, request, send_from_directory
+from werkzeug.datastructures import FileStorage
 from werkzeug.exceptions import HTTPException
 from werkzeug.utils import secure_filename
 
@@ -34,6 +35,56 @@ def _runtime_tmp_dir() -> str | None:
     if os.getenv("VERCEL"):
         return "/tmp"
     return None
+
+
+def _uploaded_files() -> list[FileStorage]:
+    files = request.files.getlist("dataset_file") + request.files.getlist("dataset_files")
+    return [uploaded_file for uploaded_file in files if uploaded_file and uploaded_file.filename]
+
+
+def _analyze_uploaded_file(
+    *,
+    uploaded_file: FileStorage,
+    tmp_dir: str,
+    index: int,
+    use_llm_agents: bool,
+    openai_api_key: str | None,
+    llm_model: str | None,
+    llm_fast_model: str | None,
+    llm_strong_model: str | None,
+) -> dict:
+    display_filename = _uploaded_display_filename(uploaded_file.filename)
+    filename = secure_filename(display_filename) or f"uploaded_dataset_{index}.csv"
+    suffix = Path(filename).suffix or Path(display_filename).suffix or ".csv"
+    uploaded_path = Path(tmp_dir) / f"dataset_{index}{suffix}"
+    uploaded_file.save(uploaded_path)
+    return run_pipeline(
+        uploaded_dataset_csv=str(uploaded_path),
+        uploaded_dataset_name=display_filename,
+        use_llm_agents=use_llm_agents,
+        openai_api_key=openai_api_key,
+        llm_model=llm_model,
+        llm_fast_model=llm_fast_model,
+        llm_strong_model=llm_strong_model,
+    )
+
+
+def _batch_summary(items: list[dict]) -> dict:
+    successful_results = [item["result"] for item in items if item.get("ok") and item.get("result")]
+    failed_count = sum(1 for item in items if not item.get("ok"))
+    return {
+        "dataset_count": len(items),
+        "success_count": len(successful_results),
+        "failed_count": failed_count,
+        "row_count": sum(int(result.get("summary", {}).get("row_count") or 0) for result in successful_results),
+        "finding_count": sum(int(result.get("summary", {}).get("finding_count") or 0) for result in successful_results),
+        "issue_finding_count": sum(
+            int(result.get("summary", {}).get("issue_finding_count") or 0) for result in successful_results
+        ),
+        "manual_review_finding_count": sum(
+            int(result.get("summary", {}).get("manual_review_finding_count") or 0) for result in successful_results
+        ),
+    }
 
 
 def create_app() -> Flask:
@@ -78,27 +129,53 @@ def create_app() -> Flask:
             llm_model = request.form.get("llm_model") or None
             llm_fast_model = request.form.get("llm_fast_model") or None
             llm_strong_model = request.form.get("llm_strong_model") or None
-            uploaded_file = request.files.get("dataset_file")
+            uploaded_files = _uploaded_files()
 
-            if not uploaded_file:
+            if not uploaded_files:
                 return jsonify({"error": "dataset_file is required"}), 400
 
-            display_filename = _uploaded_display_filename(uploaded_file.filename)
-            filename = secure_filename(display_filename) or "uploaded_dataset.csv"
-            suffix = Path(filename).suffix or Path(display_filename).suffix or ".csv"
             with tempfile.TemporaryDirectory(prefix="public_data_quality_upload_", dir=_runtime_tmp_dir()) as tmp_dir:
-                uploaded_path = Path(tmp_dir) / f"dataset{suffix}"
-                uploaded_file.save(uploaded_path)
-                result = run_pipeline(
-                    uploaded_dataset_csv=str(uploaded_path),
-                    uploaded_dataset_name=display_filename,
-                    use_llm_agents=use_llm_agents,
-                    openai_api_key=openai_api_key,
-                    llm_model=llm_model,
-                    llm_fast_model=llm_fast_model,
-                    llm_strong_model=llm_strong_model,
-                )
-                return jsonify(result)
+                if len(uploaded_files) == 1:
+                    result = _analyze_uploaded_file(
+                        uploaded_file=uploaded_files[0],
+                        tmp_dir=tmp_dir,
+                        index=1,
+                        use_llm_agents=use_llm_agents,
+                        openai_api_key=openai_api_key,
+                        llm_model=llm_model,
+                        llm_fast_model=llm_fast_model,
+                        llm_strong_model=llm_strong_model,
+                    )
+                    return jsonify(result)
+
+                items = []
+                for index, uploaded_file in enumerate(uploaded_files, start=1):
+                    display_filename = _uploaded_display_filename(uploaded_file.filename)
+                    try:
+                        result = _analyze_uploaded_file(
+                            uploaded_file=uploaded_file,
+                            tmp_dir=tmp_dir,
+                            index=index,
+                            use_llm_agents=use_llm_agents,
+                            openai_api_key=openai_api_key,
+                            llm_model=llm_model,
+                            llm_fast_model=llm_fast_model,
+                            llm_strong_model=llm_strong_model,
+                        )
+                        items.append({"ok": True, "filename": display_filename, "result": result})
+                    except Exception as exc:  # pragma: no cover
+                        traceback.print_exc()
+                        items.append(
+                            {
+                                "ok": False,
+                                "filename": display_filename,
+                                "error": str(exc) or exc.__class__.__name__,
+                            }
+                        )
+
+                summary = _batch_summary(items)
+                status_code = 200 if summary["success_count"] else 400
+                return jsonify({"batch": True, "summary": summary, "results": items}), status_code
         except ValueError as exc:
             return jsonify({"error": str(exc)}), 400
         except Exception as exc:  # pragma: no cover

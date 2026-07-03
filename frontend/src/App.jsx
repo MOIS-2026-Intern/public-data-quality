@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { FindingTypeBadge, SummaryCard, displayValue } from "./components/common";
 import { PreviewPanel } from "./components/PreviewPanel";
 import {
@@ -9,8 +9,8 @@ import {
 } from "./lib/formatters";
 
 function ControlPanel({
-  datasetFile,
-  setDatasetFile,
+  datasetFiles,
+  setDatasetFiles,
   openAiApiKey,
   setOpenAiApiKey,
   llmFastModel,
@@ -21,6 +21,11 @@ function ControlPanel({
   error,
   onSubmit,
 }) {
+  const fileCount = datasetFiles.length;
+  const selectedFileLabel =
+    fileCount === 0 ? "선택된 파일 없음" : fileCount === 1 ? datasetFiles[0].name : `${fileCount}개 파일 선택됨`;
+  const selectedFileTitle = datasetFiles.map((file) => file.name).join("\n");
+
   return (
     <section className="control-panel">
       <form onSubmit={onSubmit}>
@@ -30,14 +35,24 @@ function ControlPanel({
             <input
               className="file-picker-input"
               type="file"
+              multiple
               accept=".csv,.xlsx,.xls,text/csv,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-              onChange={(event) => setDatasetFile(event.target.files?.[0] ?? null)}
+              onChange={(event) => setDatasetFiles(Array.from(event.target.files || []))}
             />
             <span className="file-picker-action">파일 선택</span>
-            <span className="file-picker-name" title={datasetFile?.name || ""}>
-              {datasetFile?.name || "선택된 파일 없음"}
+            <span className="file-picker-name" title={selectedFileTitle}>
+              {selectedFileLabel}
             </span>
           </label>
+          {fileCount > 1 ? (
+            <div className="selected-files" aria-label="선택된 파일">
+              {datasetFiles.map((file) => (
+                <span className="selected-file" key={`${file.name}-${file.size}-${file.lastModified}`} title={file.name}>
+                  {file.name}
+                </span>
+              ))}
+            </div>
+          ) : null}
         </div>
         <label>
           OpenAI API Key
@@ -66,7 +81,7 @@ function ControlPanel({
             placeholder="예: gpt-4o"
           />
         </label>
-        <button className="primary-button" type="submit" disabled={loading || !datasetFile}>
+        <button className="primary-button" type="submit" disabled={loading || fileCount === 0}>
           {loading ? "분석 중..." : "분석 실행"}
         </button>
       </form>
@@ -84,6 +99,19 @@ function SummarySection({ summary }) {
       <SummaryCard label="검증 결과" value={summary.finding_count ?? 0} />
       <SummaryCard label="오류/이상" value={summary.issue_finding_count ?? 0} />
       <SummaryCard label="수동 검토" value={summary.manual_review_finding_count ?? 0} />
+    </div>
+  );
+}
+
+function BatchSummarySection({ summary }) {
+  return (
+    <div className="summary-grid">
+      <SummaryCard label="파일 수" value={summary.dataset_count ?? 0} />
+      <SummaryCard label="성공" value={summary.success_count ?? 0} />
+      <SummaryCard label="실패" value={summary.failed_count ?? 0} />
+      <SummaryCard label="총 행 수" value={summary.row_count ?? 0} />
+      <SummaryCard label="검증 결과" value={summary.finding_count ?? 0} />
+      <SummaryCard label="오류/이상" value={summary.issue_finding_count ?? 0} />
     </div>
   );
 }
@@ -129,6 +157,17 @@ function FindingsTable({ findings }) {
 }
 
 function ResultsPanel({ result }) {
+  const [activeResultIndex, setActiveResultIndex] = useState(0);
+  const isBatch = Boolean(result?.batch);
+  const successfulItems = isBatch ? (result.results || []).filter((item) => item.ok && item.result) : [];
+  const failedItems = isBatch ? (result.results || []).filter((item) => !item.ok) : [];
+  const activeItem = successfulItems[activeResultIndex] || successfulItems[0] || null;
+  const activeResult = isBatch ? activeItem?.result : result;
+
+  useEffect(() => {
+    setActiveResultIndex(0);
+  }, [result]);
+
   if (!result) {
     return (
       <section className="results-panel">
@@ -139,28 +178,65 @@ function ResultsPanel({ result }) {
 
   return (
     <section className="results-panel">
-      <SummarySection summary={result.summary || {}} />
+      {isBatch ? (
+        <>
+          <BatchSummarySection summary={result.summary || {}} />
+          {successfulItems.length ? (
+            <div className="result-tabs" role="tablist" aria-label="분석 결과 파일">
+              {successfulItems.map((item, index) => (
+                <button
+                  className={`result-tab ${index === activeResultIndex ? "is-active" : ""}`}
+                  type="button"
+                  role="tab"
+                  aria-selected={index === activeResultIndex}
+                  key={`${item.filename}-${index}`}
+                  onClick={() => setActiveResultIndex(index)}
+                  title={item.filename}
+                >
+                  {item.filename}
+                </button>
+              ))}
+            </div>
+          ) : null}
+          {failedItems.length ? (
+            <div className="failed-files">
+              {failedItems.map((item, index) => (
+                <div className="failed-file" key={`${item.filename}-${index}`}>
+                  <strong>{item.filename}</strong>
+                  <span>{item.error || "분석 실패"}</span>
+                </div>
+              ))}
+            </div>
+          ) : null}
+        </>
+      ) : null}
 
-      <div className="result-section">
-        <h2>검증 결과</h2>
-        <FindingsTable findings={result.findings} />
-      </div>
+      {activeResult ? <SummarySection summary={activeResult.summary || {}} /> : null}
 
-      <div className="result-section">
-        <h2>데이터 미리보기</h2>
-        <PreviewPanel
-          headers={result.preview_headers || []}
-          rows={result.preview_rows || []}
-          columns={result.columns || []}
-          findings={result.findings || []}
-        />
-      </div>
+      {activeResult ? (
+        <>
+          <div className="result-section">
+            <h2>검증 결과</h2>
+            <FindingsTable findings={activeResult.findings} />
+          </div>
+
+          <div className="result-section">
+            <h2>데이터 미리보기</h2>
+            <PreviewPanel
+              headers={activeResult.preview_headers || []}
+              rows={activeResult.preview_rows || []}
+              columns={activeResult.columns || []}
+              findings={activeResult.findings || []}
+            />
+          </div>
+        </>
+      ) : null}
     </section>
   );
 }
 
 function App() {
-  const [datasetFile, setDatasetFile] = useState(null);
+  const [datasetFiles, setDatasetFiles] = useState([]);
   const [useLlm] = useState(true);
   const [openAiApiKey, setOpenAiApiKey] = useState("");
   const [llmFastModel, setLlmFastModel] = useState("gpt-4o-mini");
@@ -175,7 +251,7 @@ function App() {
     setError("");
 
     try {
-      if (!datasetFile) {
+      if (datasetFiles.length === 0) {
         throw new Error("분석할 CSV 파일을 먼저 업로드하세요.");
       }
       if (useLlm && !openAiApiKey.trim()) {
@@ -183,7 +259,7 @@ function App() {
       }
 
       const body = new FormData();
-      if (datasetFile) body.append("dataset_file", datasetFile);
+      datasetFiles.forEach((datasetFile) => body.append("dataset_file", datasetFile));
       body.append("use_llm_agents", String(useLlm));
       if (openAiApiKey.trim()) body.append("openai_api_key", openAiApiKey.trim());
       if (llmFastModel) body.append("llm_fast_model", llmFastModel);
@@ -229,8 +305,8 @@ function App() {
 
       <main className="content-grid">
         <ControlPanel
-          datasetFile={datasetFile}
-          setDatasetFile={setDatasetFile}
+          datasetFiles={datasetFiles}
+          setDatasetFiles={setDatasetFiles}
           openAiApiKey={openAiApiKey}
           setOpenAiApiKey={setOpenAiApiKey}
           llmFastModel={llmFastModel}
