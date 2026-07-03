@@ -27,8 +27,12 @@ class ColumnProfile(BaseModel):
     unit: str | None = None
     tokens: list[str] = Field(default_factory=list)
     semantic_tags: list[str] = Field(default_factory=list)
+    standard_candidates: list[str] = Field(default_factory=list, exclude=True)
+    standard_match_type: str | None = Field(default=None, exclude=True)
     routing_confidence: float = 0.0
     assigned_rules: list[str] = Field(default_factory=list)
+    rag_required: bool = Field(default=False, exclude=True)
+    rag_evidence: list[str] = Field(default_factory=list, exclude=True)
     total_count: int | None = None
     non_empty_count: int = 0
     null_count: int = 0
