@@ -182,7 +182,10 @@ def find_incomplete_detail_address(context: ColumnRuleContext) -> list[Validatio
             ),
             row_indexes=row_indexes,
             related_columns=[column.raw_name, *related_columns],
-            evidence=[f"incomplete_detail_address_rows:{len(row_indexes)}"],
+            evidence=[
+                f"incomplete_detail_address_rows:{len(row_indexes)}",
+                "detector:incomplete_detail_address",
+            ],
         )
     ]
 
@@ -209,7 +212,10 @@ def find_truncated_address(context: ColumnRuleContext) -> list[ValidationFinding
             ),
             row_indexes=row_indexes,
             related_columns=[column.raw_name],
-            evidence=[f"truncated_address_rows:{len(row_indexes)}"],
+            evidence=[
+                f"truncated_address_rows:{len(row_indexes)}",
+                "detector:truncated_address",
+            ],
         )
     ]
 
@@ -278,4 +284,3 @@ def find_duplicate_identifiers(context: ColumnRuleContext) -> list[ValidationFin
             evidence=[f"non_empty:{column.non_empty_count}", f"distinct:{column.distinct_count}"],
         )
     ]
-

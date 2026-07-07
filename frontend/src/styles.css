@@ -290,6 +290,19 @@ textarea {
   font-weight: 800;
 }
 
+.field-hint {
+  color: #66756f;
+  font-size: 0.8rem;
+  line-height: 1.4;
+}
+
+.field-hint code {
+  padding: 1px 4px;
+  border-radius: 4px;
+  background: #f4f7f5;
+  color: #11284d;
+}
+
 .control-section-input {
   min-height: 78px;
 }

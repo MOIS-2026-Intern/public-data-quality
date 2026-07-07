@@ -22,6 +22,10 @@ STRONG_LLM_ISSUE_RULE_IDS = {
     "date_domain",
     "logical_consistency",
 }
+DETERMINISTIC_TRUNCATION_DETECTORS = {
+    "detector:incomplete_detail_address",
+    "detector:truncated_address",
+}
 
 
 def verify_results(state: PipelineState) -> PipelineState:
@@ -101,6 +105,8 @@ def _is_final_issue_candidate(finding) -> bool:
         return True
     if _is_count_mapped_truncation(finding):
         return True
+    if _is_deterministic_truncation(finding):
+        return True
     return _is_strong_llm_issue(finding)
 
 
@@ -115,6 +121,13 @@ def _is_count_mapped_truncation(finding) -> bool:
     if truncated_count is None or full_count is None:
         return False
     return full_count > truncated_count
+
+
+def _is_deterministic_truncation(finding) -> bool:
+    if finding.rule_id != "categorical_value_truncated":
+        return False
+    evidence = finding.evidence or []
+    return any(detector in evidence for detector in DETERMINISTIC_TRUNCATION_DETECTORS)
 
 
 def _is_strong_llm_issue(finding) -> bool:

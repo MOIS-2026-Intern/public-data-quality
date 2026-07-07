@@ -32,6 +32,7 @@ from .core.io.sources import (
     prepare_saved_dataset,
     prepare_url_datasets,
 )
+from .core.io.url_lists import load_url_list
 from .service import (
     PIPELINE_PROGRESS_STEPS,
     REPORT_PROGRESS_STEP,
@@ -54,6 +55,11 @@ def _runtime_tmp_dir() -> str | None:
 
 def _uploaded_files() -> list[FileStorage]:
     files = request.files.getlist("dataset_file") + request.files.getlist("dataset_files")
+    return [uploaded_file for uploaded_file in files if uploaded_file and uploaded_file.filename]
+
+
+def _uploaded_url_list_files() -> list[FileStorage]:
+    files = request.files.getlist("url_list_file") + request.files.getlist("url_list_files")
     return [uploaded_file for uploaded_file in files if uploaded_file and uploaded_file.filename]
 
 
@@ -223,6 +229,31 @@ def _save_uploaded_file(
     return prepare_saved_dataset(uploaded_path, display_filename, tmp_dir, source_type="file")
 
 
+def _load_uploaded_url_list_file(
+    *,
+    uploaded_file: FileStorage,
+    tmp_dir: str,
+    index: int,
+) -> list[str]:
+    display_filename = _uploaded_display_filename(uploaded_file.filename)
+    filename = secure_filename(display_filename) or f"url_list_{index}.txt"
+    suffix = Path(filename).suffix or Path(display_filename).suffix or ".txt"
+    uploaded_path = Path(tmp_dir) / f"url_list_{index}{suffix}"
+    uploaded_file.save(uploaded_path)
+    return load_url_list(uploaded_path)
+
+
+def _unique_values(values: list[str]) -> list[str]:
+    unique: list[str] = []
+    seen: set[str] = set()
+    for value in values:
+        if value in seen:
+            continue
+        unique.append(value)
+        seen.add(value)
+    return unique
+
+
 def _prepare_request_datasets(payload: dict[str, Any], tmp_dir: str) -> list[PreparedDataset]:
     prepared: list[PreparedDataset] = []
     for index, uploaded_file in enumerate(_uploaded_files(), start=1):
@@ -230,6 +261,12 @@ def _prepare_request_datasets(payload: dict[str, Any], tmp_dir: str) -> list[Pre
 
     source_hint = str(_first_payload_value(payload, "source_type", "input_type", "type") or "").strip().lower()
     generic_urls = _payload_values(payload, "url", "source_url", "nia_url", split_lines=True)
+    uploaded_url_list_urls: list[str] = []
+    if source_hint == "url":
+        for index, uploaded_file in enumerate(_uploaded_url_list_files(), start=1):
+            uploaded_url_list_urls.extend(
+                _load_uploaded_url_list_file(uploaded_file=uploaded_file, tmp_dir=tmp_dir, index=index)
+            )
     has_api_options = any(
         _first_payload_value(payload, name) is not None
         for name in (
@@ -256,14 +293,18 @@ def _prepare_request_datasets(payload: dict[str, Any], tmp_dir: str) -> list[Pre
     )
 
     data_urls = _payload_values(payload, "data_url", "dataset_url", "file_url", "download_url", split_lines=True)
+    if uploaded_url_list_urls:
+        data_urls.extend(uploaded_url_list_urls)
     if not data_urls and generic_urls and source_hint not in {"api", "openapi"} and not has_api_options:
         data_urls = generic_urls
+    data_urls = _unique_values(data_urls)
     for data_url in data_urls:
         prepared.extend(prepare_url_datasets(data_url, tmp_dir))
 
     api_urls = _payload_values(payload, "api_url", "apiEndpoint", "endpoint", "openapi_url", split_lines=True)
     if not api_urls and generic_urls and (source_hint in {"api", "openapi"} or has_api_options):
         api_urls = generic_urls
+    api_urls = _unique_values(api_urls)
     for api_url in api_urls:
         prepared.extend(
             prepare_api_datasets(

@@ -26,6 +26,8 @@ function ControlPanel({
   setSourceType,
   datasetFiles,
   setDatasetFiles,
+  urlListFiles,
+  setUrlListFiles,
   dataUrl,
   setDataUrl,
   apiUrl,
@@ -56,6 +58,14 @@ function ControlPanel({
   const selectedFileLabel =
     fileCount === 0 ? "선택된 파일 없음" : fileCount === 1 ? datasetFiles[0].name : `${fileCount}개 파일 선택됨`;
   const selectedFileTitle = datasetFiles.map((file) => file.name).join("\n");
+  const urlListFileCount = urlListFiles.length;
+  const selectedUrlListLabel =
+    urlListFileCount === 0
+      ? "선택된 파일 없음"
+      : urlListFileCount === 1
+        ? urlListFiles[0].name
+        : `${urlListFileCount}개 파일 선택됨`;
+  const selectedUrlListTitle = urlListFiles.map((file) => file.name).join("\n");
 
   return (
     <section className="control-panel">
@@ -107,16 +117,46 @@ function ControlPanel({
           ) : null}
 
           {sourceType === "url" ? (
-            <label>
-              입력 URL 목록
-              <textarea
-                rows={5}
-                value={dataUrl}
-                onChange={(event) => setDataUrl(event.target.value)}
-                placeholder={"https://...\nhttps://..."}
-                spellCheck={false}
-              />
-            </label>
+            <>
+              <label>
+                입력 URL 목록
+                <textarea
+                  rows={5}
+                  value={dataUrl}
+                  onChange={(event) => setDataUrl(event.target.value)}
+                  placeholder={"https://...\nhttps://..."}
+                  spellCheck={false}
+                />
+              </label>
+              <div className="file-field">
+                <span className="file-field-label">URL 목록 파일 업로드</span>
+                <label className="file-picker">
+                  <input
+                    className="file-picker-input"
+                    type="file"
+                    multiple
+                    accept=".txt,.xlsx,.xls,text/plain,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                    onChange={(event) => setUrlListFiles(Array.from(event.target.files || []))}
+                  />
+                  <span className="file-picker-action">파일 선택</span>
+                  <span className="file-picker-name" title={selectedUrlListTitle}>
+                    {selectedUrlListLabel}
+                  </span>
+                </label>
+                {urlListFileCount > 1 ? (
+                  <div className="selected-files" aria-label="선택된 URL 목록 파일">
+                    {urlListFiles.map((file) => (
+                      <span className="selected-file" key={`${file.name}-${file.size}-${file.lastModified}`} title={file.name}>
+                        {file.name}
+                      </span>
+                    ))}
+                  </div>
+                ) : null}
+                <div className="field-hint">
+                  <code>txt</code>, <code>xlsx</code>, <code>xls</code> 파일에서 http/https URL을 추출합니다.
+                </div>
+              </div>
+            </>
           ) : null}
 
           {sourceType === "api" ? (
@@ -463,6 +503,7 @@ function ResultsPanel({ result, loading, progress }) {
 function App() {
   const [sourceType, setSourceType] = useState("file");
   const [datasetFiles, setDatasetFiles] = useState([]);
+  const [urlListFiles, setUrlListFiles] = useState([]);
   const [dataUrl, setDataUrl] = useState("");
   const [apiUrl, setApiUrl] = useState("");
   const [apiServiceKey, setApiServiceKey] = useState("");
@@ -494,7 +535,7 @@ function App() {
 
   function expectedSourceCount() {
     if (sourceType === "file") return datasetFiles.length;
-    if (sourceType === "url") return splitLineValues(dataUrl).length || 1;
+    if (sourceType === "url") return splitLineValues(dataUrl).length + urlListFiles.length || 1;
     return 1;
   }
 
@@ -604,8 +645,8 @@ function App() {
       if (sourceType === "file" && datasetFiles.length === 0) {
         throw new Error("분석할 파일을 먼저 업로드하세요.");
       }
-      if (sourceType === "url" && dataUrls.length === 0) {
-        throw new Error("입력 URL을 한 개 이상 입력하세요.");
+      if (sourceType === "url" && dataUrls.length === 0 && urlListFiles.length === 0) {
+        throw new Error("입력 URL 또는 URL 목록 파일을 한 개 이상 추가하세요.");
       }
       if (sourceType === "api" && !apiUrl.trim()) {
         throw new Error("호출 URL을 입력하세요.");
@@ -621,6 +662,7 @@ function App() {
       }
       if (sourceType === "url") {
         dataUrls.forEach((url) => body.append("data_url", url));
+        urlListFiles.forEach((urlListFile) => body.append("url_list_file", urlListFile));
       }
       if (sourceType === "api") {
         body.append("api_url", apiUrl.trim());
@@ -688,6 +730,8 @@ function App() {
           setSourceType={setSourceType}
           datasetFiles={datasetFiles}
           setDatasetFiles={setDatasetFiles}
+          urlListFiles={urlListFiles}
+          setUrlListFiles={setUrlListFiles}
           dataUrl={dataUrl}
           setDataUrl={setDataUrl}
           apiUrl={apiUrl}

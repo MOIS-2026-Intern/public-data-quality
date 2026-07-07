@@ -3,15 +3,11 @@ from __future__ import annotations
 import re
 from collections import Counter
 
-try:
-    from .....core.config.constants import CATEGORICAL_LLM_MIN_REPEAT_COUNT
-except ImportError:  # pragma: no cover
-    if (__package__ or "").split(".", 1)[0] != "agents":
-        raise
-    from core.config.constants import CATEGORICAL_LLM_MIN_REPEAT_COUNT
 from .text import is_numeric_like_value, normalized_text
 
 SHORT_KOREAN_PREFIX_LEN = 2
+MIN_TRUNCATED_PREFIX_LEN = 3
+MIN_TRUNCATED_PREFIX_RATIO = 0.25
 ENTITY_COMPLETION_SUFFIXES = {
     "교",
     "원",
@@ -73,12 +69,9 @@ def is_normal_qualifier_suffix(suffix: str) -> bool:
         r"^\d+호점$",
         r"^[A-Z]$",
         r"^[가-힣A-Z0-9]+점$",
-        r"^도서관$",
         r"^분관$",
         r"^별관$",
         r"^본관$",
-        r"^기관$",
-        r"^시설$",
     )
     return any(re.fullmatch(pattern, text) for pattern in normal_suffix_patterns)
 
@@ -126,42 +119,38 @@ def find_truncated_value_pairs(counter: Counter[str]) -> list[tuple[str, str]]:
                 continue
             if short_norm == long_norm:
                 continue
-            if len(short_norm) < 3 and not is_short_korean_entity_prefix(short_norm, long_norm):
+            if len(short_norm) < MIN_TRUNCATED_PREFIX_LEN and not is_short_korean_entity_prefix(short_norm, long_norm):
                 continue
-            if long_norm.startswith(short_norm) and len(long_norm) - len(short_norm) <= 3:
-                if len(short_norm) / max(1, len(long_norm)) >= 0.45:
-                    suffix = long_norm[len(short_norm) :]
-                    if (
-                        is_complete_entity_or_location_value(short_norm)
-                        and suffix in FACILITY_QUALIFIER_SUFFIXES
-                    ):
-                        continue
-                    if short_norm in COMPLETE_LOCATION_VALUES:
-                        continue
-                    if is_normal_qualifier_suffix(suffix):
-                        continue
-                    if counter[short_value] > CATEGORICAL_LLM_MIN_REPEAT_COUNT:
-                        continue
-                    if counter[long_value] <= counter[short_value]:
-                        continue
-                    candidate_pairs.append((short_value, long_value))
+            if not long_norm.startswith(short_norm):
+                continue
+            if len(short_norm) / max(1, len(long_norm)) < MIN_TRUNCATED_PREFIX_RATIO:
+                continue
+            suffix = long_norm[len(short_norm) :]
+            if (
+                is_complete_entity_or_location_value(short_norm)
+                and suffix in FACILITY_QUALIFIER_SUFFIXES
+            ):
+                continue
+            if short_norm in COMPLETE_LOCATION_VALUES:
+                continue
+            if is_normal_qualifier_suffix(suffix):
+                continue
+            if counter[long_value] <= counter[short_value]:
+                continue
+            candidate_pairs.append((short_value, long_value))
+
+    unique_pairs = sorted(set(candidate_pairs))
+    long_values_by_short: dict[str, set[str]] = {}
+    short_values_by_long: dict[str, set[str]] = {}
+    for short_value, long_value in unique_pairs:
+        long_values_by_short.setdefault(short_value, set()).add(long_value)
+        short_values_by_long.setdefault(long_value, set()).add(short_value)
 
     one_to_one_pairs: list[tuple[str, str]] = []
-    used_short_values: set[str] = set()
-    used_long_values: set[str] = set()
-    for short_value, long_value in sorted(
-        set(candidate_pairs),
-        key=lambda item: (
-            len(normalized_text(item[0])),
-            item[0],
-            -counter[item[1]],
-            len(normalized_text(item[1])),
-            item[1],
-        ),
-    ):
-        if short_value in used_short_values or long_value in used_long_values:
+    for short_value, long_value in unique_pairs:
+        if len(long_values_by_short.get(short_value, set())) != 1:
+            continue
+        if len(short_values_by_long.get(long_value, set())) != 1:
             continue
         one_to_one_pairs.append((short_value, long_value))
-        used_short_values.add(short_value)
-        used_long_values.add(long_value)
     return one_to_one_pairs
