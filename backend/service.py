@@ -13,6 +13,8 @@ try:
     )
     from .core.reporting import write_error_report
 except ImportError:  # pragma: no cover
+    if __package__:
+        raise
     from core.config.constants import (
         QUALITY_DETECTION_RESULTS_CSV_NAME,
         VALIDATION_OUTPUT_DIR_NAME,

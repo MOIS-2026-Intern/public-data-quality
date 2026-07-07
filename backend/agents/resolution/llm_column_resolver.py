@@ -22,6 +22,8 @@ try:
     )
     from ...core.schema.models import ColumnProfile, PipelineState
 except ImportError:  # pragma: no cover
+    if (__package__ or "").split(".", 1)[0] != "agents":
+        raise
     from core.config.constants import (
         LLM_FAST_MODEL,
         LLM_STRONG_FALLBACK_CONFIDENCE,

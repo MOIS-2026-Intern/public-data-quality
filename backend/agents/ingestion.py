@@ -5,6 +5,8 @@ try:
     from ..core.schema.models import ColumnProfile, PipelineState
     from ..core.schema.normalization import build_column_profile
 except ImportError:  # pragma: no cover
+    if (__package__ or "").split(".", 1)[0] != "agents":
+        raise
     from core.io.loaders import load_dataset_meta, load_uploaded_dataset_meta
     from core.schema.models import ColumnProfile, PipelineState
     from core.schema.normalization import build_column_profile

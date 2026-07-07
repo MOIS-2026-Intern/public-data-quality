@@ -3,6 +3,8 @@ from __future__ import annotations
 try:
     from ..core.schema.models import AgentTrace
 except ImportError:  # pragma: no cover
+    if (__package__ or "").split(".", 1)[0] != "agents":
+        raise
     from core.schema.models import AgentTrace
 
 

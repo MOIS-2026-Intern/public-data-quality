@@ -17,6 +17,8 @@ try:
     from ...core.schema.models import ColumnProfile, PipelineState
     from ...core.validation import semantic_profile_llm_reasons
 except ImportError:  # pragma: no cover
+    if (__package__ or "").split(".", 1)[0] != "agents":
+        raise
     from core.config.constants import (
         LLM_FAST_MODEL,
         LLM_SEMANTIC_PROFILE_CONFIDENCE_DEFAULT,
