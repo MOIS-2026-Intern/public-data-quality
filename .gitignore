@@ -24,7 +24,7 @@ build/
 *.egg-info/
 
 # Generated outputs
-validation/
+/validation/
 
 # IDE / OS
 .DS_Store
