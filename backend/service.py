@@ -49,6 +49,8 @@ def _build_graph(
     try:
         from .graph import build_graph
     except ImportError:  # pragma: no cover
+        if __package__:
+            raise
         from graph import build_graph
 
     return build_graph(

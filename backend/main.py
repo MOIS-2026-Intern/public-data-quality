@@ -24,7 +24,12 @@ def _startup_failed_app(detail: str):
 
 def _load_app():
     try:
-        from web import app as flask_app
+        try:
+            from .web import app as flask_app
+        except ImportError as exc:
+            if __package__:
+                raise
+            from web import app as flask_app
 
         return flask_app
     except Exception as exc:  # pragma: no cover

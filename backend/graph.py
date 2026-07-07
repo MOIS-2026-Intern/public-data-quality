@@ -7,6 +7,8 @@ try:
     from .core.pipeline import profile_values, propose_repairs, validate_quality, verify_results
     from .core.schema.models import PipelineState
 except ImportError:  # pragma: no cover
+    if __package__:
+        raise
     from agents import build_agents
     from core.pipeline import profile_values, propose_repairs, validate_quality, verify_results
     from core.schema.models import PipelineState
