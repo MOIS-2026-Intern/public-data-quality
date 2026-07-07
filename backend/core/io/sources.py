@@ -1,0 +1,425 @@
+from __future__ import annotations
+
+import json
+import re
+import zipfile
+from dataclasses import dataclass
+from io import BytesIO
+from pathlib import Path, PurePosixPath
+from urllib.error import HTTPError, URLError
+from urllib.parse import parse_qsl, quote, unquote, urlparse, urlunparse
+from urllib.request import Request, urlopen
+
+
+SUPPORTED_DATASET_SUFFIXES = {
+    ".csv",
+    ".tsv",
+    ".txt",
+    ".xlsx",
+    ".xls",
+    ".json",
+    ".jsonl",
+    ".xml",
+}
+SUPPORTED_ARCHIVE_SUFFIXES = {".zip"}
+SUPPORTED_UPLOAD_SUFFIXES = SUPPORTED_DATASET_SUFFIXES | SUPPORTED_ARCHIVE_SUFFIXES
+REMOTE_TIMEOUT_SECONDS = 60
+
+
+@dataclass(frozen=True)
+class PreparedDataset:
+    display_name: str
+    path: Path
+    source_type: str
+    response_type: str | None = None
+
+
+def supported_upload_suffixes_label() -> str:
+    return ", ".join(sorted(SUPPORTED_UPLOAD_SUFFIXES))
+
+
+def prepare_saved_dataset(
+    path: str | Path,
+    display_name: str,
+    output_dir: str | Path,
+    *,
+    source_type: str = "file",
+) -> list[PreparedDataset]:
+    dataset_path = Path(path)
+    suffix = dataset_path.suffix.lower()
+    if suffix in SUPPORTED_ARCHIVE_SUFFIXES:
+        return _extract_zip_datasets(dataset_path, display_name, Path(output_dir), source_type=source_type)
+    if suffix in SUPPORTED_DATASET_SUFFIXES:
+        return [PreparedDataset(display_name=display_name, path=dataset_path, source_type=source_type, response_type=suffix.lstrip("."))]
+    raise ValueError(
+        f"지원하지 않는 파일 형식입니다: {suffix or '<none>'}. 지원 형식: {supported_upload_suffixes_label()}"
+    )
+
+
+def prepare_url_datasets(url: str, output_dir: str | Path) -> list[PreparedDataset]:
+    normalized_url = _normalize_http_url(url, "URL")
+    payload, content_type, content_disposition = _fetch_remote(normalized_url, method="GET")
+    return _prepare_remote_payload(
+        payload=payload,
+        content_type=content_type,
+        content_disposition=content_disposition,
+        request_url=normalized_url,
+        output_dir=Path(output_dir),
+        source_type="url",
+        fallback_name="url_dataset",
+    )
+
+
+def prepare_api_datasets(
+    url: str,
+    output_dir: str | Path,
+    *,
+    method: str = "GET",
+    headers: dict[str, str] | None = None,
+    body: str | bytes | None = None,
+    params: dict[str, str] | None = None,
+) -> list[PreparedDataset]:
+    normalized_url = _append_query_params(_normalize_http_url(url, "API URL"), params or {})
+    normalized_method = (method or "GET").strip().upper()
+    if normalized_method not in {"GET", "POST", "PUT", "PATCH"}:
+        raise ValueError("API method는 GET, POST, PUT, PATCH 중 하나여야 합니다.")
+
+    payload, content_type, content_disposition = _fetch_remote(
+        normalized_url,
+        method=normalized_method,
+        headers=headers,
+        body=body,
+    )
+    return _prepare_remote_payload(
+        payload=payload,
+        content_type=content_type,
+        content_disposition=content_disposition,
+        request_url=normalized_url,
+        output_dir=Path(output_dir),
+        source_type="api",
+        fallback_name="api_response",
+    )
+
+
+def _normalize_http_url(value: str, label: str) -> str:
+    url = (value or "").strip()
+    if not url:
+        raise ValueError(f"{label}이 비어 있습니다.")
+    parsed = urlparse(url)
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        raise ValueError(f"{label} 형식이 올바르지 않습니다. http 또는 https URL이어야 합니다.")
+    return urlunparse(
+        parsed._replace(
+            netloc=_normalized_netloc(parsed, label),
+            path=quote(parsed.path, safe="/%:@!$&'()*+,;="),
+            params=quote(parsed.params, safe="%:@!$&'()*+,;="),
+            query=quote(parsed.query, safe="%/?&=:+,;@!$'()*[]"),
+            fragment=quote(parsed.fragment, safe="%/?&=:+,;@!$'()*[]"),
+        )
+    )
+
+
+def _normalized_netloc(parsed, label: str) -> str:
+    try:
+        hostname = parsed.hostname
+        port = parsed.port
+    except ValueError as exc:
+        raise ValueError(f"{label} 포트 형식이 올바르지 않습니다.") from exc
+    if not hostname:
+        return parsed.netloc
+
+    host = hostname.encode("idna").decode("ascii")
+    if ":" in host and not host.startswith("["):
+        host = f"[{host}]"
+
+    userinfo = ""
+    if parsed.username is not None:
+        userinfo = quote(parsed.username, safe="")
+        if parsed.password is not None:
+            userinfo = f"{userinfo}:{quote(parsed.password, safe='')}"
+        userinfo = f"{userinfo}@"
+
+    port_suffix = f":{port}" if port is not None else ""
+    return f"{userinfo}{host}{port_suffix}"
+
+
+def _fetch_remote(
+    url: str,
+    *,
+    method: str,
+    headers: dict[str, str] | None = None,
+    body: str | bytes | None = None,
+) -> tuple[bytes, str, str]:
+    try:
+        url.encode("latin-1")
+    except UnicodeEncodeError as exc:
+        raise ValueError("URL에 인코딩되지 않은 문자가 남아 있습니다. 한글 경로/쿼리는 URL 인코딩 후 요청해야 합니다.") from exc
+
+    request_headers = dict(
+        _safe_header_pair(key, value)
+        for key, value in {
+            "User-Agent": "LDQ-GPT/1.0",
+            "Accept": "*/*",
+        }.items()
+    )
+    for key, value in (headers or {}).items():
+        if key and value is not None:
+            header_key, header_value = _safe_header_pair(key, value)
+            request_headers[header_key] = header_value
+
+    request_body: bytes | None = None
+    if body not in (None, ""):
+        request_body = body if isinstance(body, bytes) else str(body).encode("utf-8")
+        if "Content-Type" not in request_headers and _looks_like_json_text(request_body):
+            request_headers["Content-Type"] = "application/json"
+
+    request = Request(url, data=request_body, headers=request_headers, method=method)
+    try:
+        with urlopen(request, timeout=REMOTE_TIMEOUT_SECONDS) as response:
+            payload = response.read()
+            content_type = response.headers.get("Content-Type", "")
+            content_disposition = response.headers.get("Content-Disposition", "")
+    except HTTPError as exc:
+        detail = exc.read().decode("utf-8", errors="replace")[:300]
+        raise ValueError(f"원격 데이터 요청 실패: HTTP {exc.code} {detail}".strip()) from exc
+    except URLError as exc:
+        raise ValueError(f"원격 데이터 요청 실패: {exc.reason}") from exc
+
+    if not payload:
+        raise ValueError("원격 데이터 응답 본문이 비어 있습니다.")
+    return payload, content_type, content_disposition
+
+
+def _safe_header_pair(key: object, value: object) -> tuple[str, str]:
+    header_key = str(key).strip()
+    header_value = str(value)
+    try:
+        header_key.encode("ascii")
+    except UnicodeEncodeError as exc:
+        raise ValueError(f"HTTP 헤더 이름은 영문/숫자/기호만 사용할 수 있습니다: {header_key}") from exc
+    try:
+        header_value.encode("latin-1")
+    except UnicodeEncodeError as exc:
+        raise ValueError(
+            f"HTTP 헤더 '{header_key}' 값에 한글 등 헤더로 보낼 수 없는 문자가 포함되어 있습니다. "
+            "해당 값은 URL 파라미터 또는 요청 본문으로 전달하세요."
+        ) from exc
+    return header_key, header_value
+
+
+def _append_query_params(url: str, params: dict[str, str]) -> str:
+    cleaned = {str(key).strip(): str(value).strip() for key, value in params.items() if key and str(value).strip()}
+    if not cleaned:
+        return url
+
+    parsed = urlparse(url)
+    existing = [
+        (key, value)
+        for key, value in parse_qsl(parsed.query, keep_blank_values=True)
+        if key not in cleaned
+    ]
+    query_parts = [f"{quote(key, safe='')}={quote(value, safe='')}" for key, value in existing]
+    for key, value in cleaned.items():
+        encoded_value = value if key.lower() == "servicekey" and "%" in value else quote(value, safe="")
+        query_parts.append(f"{quote(key, safe='')}={encoded_value}")
+    return urlunparse(parsed._replace(query="&".join(query_parts)))
+
+
+def _prepare_remote_payload(
+    *,
+    payload: bytes,
+    content_type: str,
+    content_disposition: str,
+    request_url: str,
+    output_dir: Path,
+    source_type: str,
+    fallback_name: str,
+) -> list[PreparedDataset]:
+    filename = _response_filename(content_disposition) or _url_filename(request_url) or fallback_name
+    suffix = _classify_remote_payload(payload, content_type, filename)
+    stored_name = _ensure_suffix(filename, suffix)
+    stored_path = _unique_path(output_dir, stored_name)
+    stored_path.write_bytes(payload)
+
+    prepared = prepare_saved_dataset(stored_path, stored_name, output_dir, source_type=source_type)
+    return [
+        PreparedDataset(
+            display_name=item.display_name,
+            path=item.path,
+            source_type=item.source_type,
+            response_type=suffix.lstrip("."),
+        )
+        for item in prepared
+    ]
+
+
+def _extract_zip_datasets(
+    archive_path: Path,
+    display_name: str,
+    output_dir: Path,
+    *,
+    source_type: str,
+) -> list[PreparedDataset]:
+    prepared: list[PreparedDataset] = []
+    archive_stem = Path(display_name).stem or archive_path.stem or "archive"
+    try:
+        with zipfile.ZipFile(archive_path) as archive:
+            for member in archive.infolist():
+                if member.is_dir():
+                    continue
+                member_name = _zip_member_display_name(member.filename)
+                suffix = Path(member_name).suffix.lower()
+                if suffix not in SUPPORTED_DATASET_SUFFIXES:
+                    continue
+                extracted_name = f"{archive_stem}_{member_name}"
+                extracted_path = _unique_path(output_dir, extracted_name)
+                with archive.open(member) as source, extracted_path.open("wb") as target:
+                    while True:
+                        chunk = source.read(1024 * 1024)
+                        if not chunk:
+                            break
+                        target.write(chunk)
+                prepared.append(
+                    PreparedDataset(
+                        display_name=f"{display_name}/{member_name}",
+                        path=extracted_path,
+                        source_type=source_type,
+                        response_type=suffix.lstrip("."),
+                    )
+                )
+    except zipfile.BadZipFile as exc:
+        raise ValueError("ZIP 파일 형식이 올바르지 않습니다.") from exc
+
+    if not prepared:
+        raise ValueError(
+            f"ZIP 내부에 지원 가능한 데이터 파일이 없습니다. 지원 형식: {', '.join(sorted(SUPPORTED_DATASET_SUFFIXES))}"
+        )
+    return prepared
+
+
+def _zip_member_display_name(member_name: str) -> str:
+    path = PurePosixPath(member_name)
+    parts = [part for part in path.parts if part not in {"", ".", ".."}]
+    name = "_".join(parts) if parts else path.name
+    return _safe_filename(name or "dataset")
+
+
+def _response_filename(content_disposition: str) -> str | None:
+    if not content_disposition:
+        return None
+    utf8_match = re.search(r"filename\*=UTF-8''([^;]+)", content_disposition, flags=re.IGNORECASE)
+    if utf8_match:
+        return _safe_filename(unquote(utf8_match.group(1).strip().strip('"')))
+    filename_match = re.search(r'filename="?([^";]+)"?', content_disposition, flags=re.IGNORECASE)
+    if filename_match:
+        return _safe_filename(unquote(filename_match.group(1).strip()))
+    return None
+
+
+def _url_filename(url: str) -> str | None:
+    path_name = Path(unquote(urlparse(url).path)).name
+    return _safe_filename(path_name) if path_name else None
+
+
+def _classify_remote_payload(payload: bytes, content_type: str, filename: str) -> str:
+    name_suffix = Path(filename).suffix.lower()
+    if name_suffix in SUPPORTED_UPLOAD_SUFFIXES:
+        return name_suffix
+
+    normalized_content_type = (content_type or "").split(";", 1)[0].strip().lower()
+    if normalized_content_type in {
+        "application/zip",
+        "application/x-zip-compressed",
+        "multipart/x-zip",
+    }:
+        return ".zip"
+    if normalized_content_type == "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet":
+        return ".xlsx"
+    if normalized_content_type == "application/vnd.ms-excel":
+        return ".xls" if _looks_like_xls(payload) else ".csv"
+    if normalized_content_type in {"text/csv", "application/csv", "text/comma-separated-values"}:
+        return ".csv"
+    if normalized_content_type == "text/tab-separated-values":
+        return ".tsv"
+    if normalized_content_type in {"application/json", "text/json"} or normalized_content_type.endswith("+json"):
+        return ".json"
+    if normalized_content_type in {"application/x-ndjson", "application/jsonl"}:
+        return ".jsonl"
+    if normalized_content_type in {"application/xml", "text/xml"} or normalized_content_type.endswith("+xml"):
+        return ".xml"
+
+    stripped = payload.lstrip()
+    if stripped.startswith(b"PK\x03\x04"):
+        return ".xlsx" if _looks_like_xlsx(payload) else ".zip"
+    if _looks_like_xls(stripped):
+        return ".xls"
+    if stripped.startswith((b"{", b"[")):
+        return ".json"
+    if stripped.startswith(b"<"):
+        return ".xml"
+    first_line = stripped.splitlines()[0] if stripped.splitlines() else b""
+    if b"\t" in first_line:
+        return ".tsv"
+    if any(delimiter in first_line for delimiter in (b",", b";", b"|")):
+        return ".csv"
+
+    raise ValueError(
+        f"원격 데이터 응답 유형을 판별할 수 없습니다. Content-Type={content_type or '<none>'}"
+    )
+
+
+def _ensure_suffix(filename: str, suffix: str) -> str:
+    safe_name = _safe_filename(filename) or "dataset"
+    if Path(safe_name).suffix.lower() == suffix:
+        return safe_name
+    stem = Path(safe_name).stem or safe_name
+    return f"{stem}{suffix}"
+
+
+def _safe_filename(filename: str) -> str:
+    name = PurePosixPath(str(filename).replace("\\", "/")).name
+    name = re.sub(r"[^0-9A-Za-z가-힣._-]+", "_", name).strip("._")
+    return name or "dataset"
+
+
+def _unique_path(output_dir: Path, filename: str) -> Path:
+    output_dir.mkdir(parents=True, exist_ok=True)
+    safe_name = _safe_filename(filename)
+    candidate = output_dir / safe_name
+    if not candidate.exists():
+        return candidate
+
+    stem = candidate.stem or "dataset"
+    suffix = candidate.suffix
+    index = 2
+    while True:
+        next_candidate = output_dir / f"{stem}_{index}{suffix}"
+        if not next_candidate.exists():
+            return next_candidate
+        index += 1
+
+
+def _looks_like_json_text(value: bytes) -> bool:
+    stripped = value.strip()
+    if not stripped:
+        return False
+    if stripped.startswith((b"{", b"[")):
+        try:
+            json.loads(stripped.decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            return False
+        return True
+    return False
+
+
+def _looks_like_xls(value: bytes) -> bool:
+    return value.startswith(b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1")
+
+
+def _looks_like_xlsx(value: bytes) -> bool:
+    try:
+        with zipfile.ZipFile(BytesIO(value)) as archive:
+            names = set(archive.namelist())
+    except zipfile.BadZipFile:
+        return False
+    return "[Content_Types].xml" in names and any(name.startswith("xl/") for name in names)

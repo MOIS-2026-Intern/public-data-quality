@@ -56,6 +56,14 @@ class ChatLLMClient:
             return "OPENAI_API_URL missing"
         if not self.api_key:
             return "OPENAI_API_KEY missing"
+        try:
+            self.api_url.encode("latin-1")
+        except UnicodeEncodeError:
+            return "OPENAI_API_URL contains unsupported URL characters"
+        try:
+            f"Bearer {self.api_key}".encode("latin-1")
+        except UnicodeEncodeError:
+            return "OPENAI_API_KEY contains unsupported header characters"
         return ""
 
     @property
@@ -120,6 +128,9 @@ class ChatLLMClient:
             return None
         except TimeoutError:
             self.last_error = "request timeout"
+            return None
+        except UnicodeEncodeError:
+            self.last_error = "HTTP header encoding error: OPENAI_API_KEY contains unsupported characters"
             return None
         except json.JSONDecodeError:
             self.last_error = "invalid JSON response"

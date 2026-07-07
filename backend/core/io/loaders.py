@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import csv
+import json
 from collections.abc import Iterator
-from functools import lru_cache
 from pathlib import Path
+from typing import Any
+from xml.etree import ElementTree
 
 from ..config.constants import (
     UPLOAD_DATASET_ID_PREFIX,
@@ -26,11 +28,28 @@ def _clean_headers(values: list[object]) -> list[str]:
     return [_stringify_cell(value) for value in values]
 
 
-def _iter_csv_rows(path: Path) -> Iterator[dict[str, str]]:
+def _csv_dialect(handle, fallback_delimiter: str = ","):
+    sample = handle.read(8192)
+    handle.seek(0)
+    try:
+        return csv.Sniffer().sniff(sample, delimiters=",\t;|")
+    except csv.Error:
+        dialect = csv.excel()
+        dialect.delimiter = fallback_delimiter
+        return dialect
+
+
+def _iter_delimited_rows(path: Path, fallback_delimiter: str = ",") -> Iterator[dict[str, str]]:
     with path.open("r", encoding="utf-8-sig", newline="") as handle:
-        reader = csv.DictReader(handle)
+        reader = csv.DictReader(handle, dialect=_csv_dialect(handle, fallback_delimiter))
         for row in reader:
             yield {str(key): (value or "") for key, value in row.items() if key is not None}
+
+
+def _read_delimited_headers(path: Path, fallback_delimiter: str = ",") -> list[str]:
+    with path.open("r", encoding="utf-8-sig", newline="") as handle:
+        reader = csv.reader(handle, dialect=_csv_dialect(handle, fallback_delimiter))
+        return [header.strip() for header in next(reader, []) if str(header).strip()]
 
 
 def _iter_xlsx_rows(path: Path) -> Iterator[dict[str, str]]:
@@ -84,11 +103,187 @@ def _iter_xls_rows(path: Path) -> Iterator[dict[str, str]]:
         }
 
 
+RECORD_CONTAINER_KEYS = (
+    "records",
+    "record",
+    "rows",
+    "row",
+    "items",
+    "item",
+    "data",
+    "result",
+    "results",
+    "list",
+    "body",
+    "response",
+)
+
+
+def _flatten_mapping(value: dict[str, Any], prefix: str = "") -> dict[str, str]:
+    row: dict[str, str] = {}
+    for key, nested_value in value.items():
+        clean_key = str(key).strip()
+        if not clean_key:
+            continue
+        path_key = f"{prefix}.{clean_key}" if prefix else clean_key
+        if isinstance(nested_value, dict):
+            row.update(_flatten_mapping(nested_value, path_key))
+        elif isinstance(nested_value, list):
+            row[path_key] = json.dumps(nested_value, ensure_ascii=False) if nested_value else ""
+        else:
+            row[path_key] = _stringify_cell(nested_value)
+    return row
+
+
+def _rows_from_list(values: list[Any]) -> list[dict[str, str]]:
+    rows: list[dict[str, str]] = []
+    for value in values:
+        if isinstance(value, dict):
+            rows.append(_flatten_mapping(value))
+        elif isinstance(value, list):
+            rows.extend(_rows_from_list(value))
+        else:
+            rows.append({"value": _stringify_cell(value)})
+    return rows
+
+
+def _find_records(value: Any) -> Any:
+    if isinstance(value, list):
+        return value
+    if not isinstance(value, dict):
+        return value
+
+    for key in RECORD_CONTAINER_KEYS:
+        if key in value:
+            candidate = _find_records(value[key])
+            if isinstance(candidate, list) and candidate:
+                return candidate
+
+    queue = list(value.values())
+    while queue:
+        candidate = queue.pop(0)
+        if isinstance(candidate, list) and candidate and any(isinstance(item, dict) for item in candidate):
+            return candidate
+        if isinstance(candidate, dict):
+            queue.extend(candidate.values())
+    return value
+
+
+def _json_payload_rows(payload: Any) -> list[dict[str, str]]:
+    records = _find_records(payload)
+    if isinstance(records, list):
+        return _rows_from_list(records)
+    if isinstance(records, dict):
+        return [_flatten_mapping(records)]
+    return [{"value": _stringify_cell(records)}]
+
+
+def _iter_json_rows(path: Path) -> Iterator[dict[str, str]]:
+    with path.open("r", encoding="utf-8-sig") as handle:
+        payload = json.load(handle)
+    yield from _json_payload_rows(payload)
+
+
+def _iter_jsonl_rows(path: Path) -> Iterator[dict[str, str]]:
+    with path.open("r", encoding="utf-8-sig") as handle:
+        for line in handle:
+            if not line.strip():
+                continue
+            payload = json.loads(line)
+            yield from _json_payload_rows(payload)
+
+
+def _xml_tag_name(tag: str) -> str:
+    return tag.rsplit("}", 1)[-1] if "}" in tag else tag
+
+
+def _flatten_xml_element(element: ElementTree.Element, prefix: str = "") -> dict[str, str]:
+    row: dict[str, str] = {}
+    for key, value in element.attrib.items():
+        attr_key = f"{prefix}.@{_xml_tag_name(key)}" if prefix else f"@{_xml_tag_name(key)}"
+        row[attr_key] = _stringify_cell(value)
+
+    children = list(element)
+    if not children:
+        text = _stringify_cell(element.text)
+        if prefix and text:
+            row[prefix] = text
+        return row
+
+    tag_counts: dict[str, int] = {}
+    for child in children:
+        child_tag = _xml_tag_name(child.tag)
+        tag_counts[child_tag] = tag_counts.get(child_tag, 0) + 1
+
+    for child in children:
+        child_tag = _xml_tag_name(child.tag)
+        child_key = f"{prefix}.{child_tag}" if prefix else child_tag
+        if tag_counts[child_tag] > 1 and not list(child):
+            current = row.get(child_key)
+            child_text = _stringify_cell(child.text)
+            row[child_key] = child_text if current is None else f"{current}, {child_text}"
+        else:
+            row.update(_flatten_xml_element(child, child_key))
+    return row
+
+
+def _xml_record_elements(root: ElementTree.Element) -> list[ElementTree.Element]:
+    preferred_tags = {"item", "row", "record", "data"}
+    best: list[ElementTree.Element] = []
+    best_score = -1
+
+    for parent in root.iter():
+        groups: dict[str, list[ElementTree.Element]] = {}
+        for child in list(parent):
+            groups.setdefault(_xml_tag_name(child.tag).lower(), []).append(child)
+
+        for tag, elements in groups.items():
+            if len(elements) < 2:
+                continue
+            score = len(elements) * 10 + (1000 if tag in preferred_tags else 0)
+            if score > best_score:
+                best = elements
+                best_score = score
+
+    if best:
+        return best
+
+    for element in root.iter():
+        if _xml_tag_name(element.tag).lower() in preferred_tags and list(element):
+            best.append(element)
+    return best or [root]
+
+
+def _iter_xml_rows(path: Path) -> Iterator[dict[str, str]]:
+    root = ElementTree.parse(path).getroot()
+    for element in _xml_record_elements(root):
+        row = _flatten_xml_element(element)
+        if row:
+            yield row
+
+
+def _headers_from_rows(rows: list[dict[str, str]]) -> list[str]:
+    headers: list[str] = []
+    seen: set[str] = set()
+    for row in rows:
+        for header in row:
+            if header not in seen:
+                headers.append(header)
+                seen.add(header)
+    return headers
+
+
 def iter_uploaded_rows(file_path: str | Path) -> Iterator[dict[str, str]]:
     path = Path(file_path)
     suffix = path.suffix.lower()
     if suffix == ".csv":
-        yield from _iter_csv_rows(path)
+        yield from _iter_delimited_rows(path, ",")
+        return
+    if suffix == ".tsv":
+        yield from _iter_delimited_rows(path, "\t")
+        return
+    if suffix == ".txt":
+        yield from _iter_delimited_rows(path, ",")
         return
     if suffix == ".xlsx":
         yield from _iter_xlsx_rows(path)
@@ -96,16 +291,27 @@ def iter_uploaded_rows(file_path: str | Path) -> Iterator[dict[str, str]]:
     if suffix == ".xls":
         yield from _iter_xls_rows(path)
         return
-    raise ValueError(f"Unsupported file type: {suffix or '<none>'}. Supported: .csv, .xlsx, .xls")
+    if suffix == ".json":
+        yield from _iter_json_rows(path)
+        return
+    if suffix == ".jsonl":
+        yield from _iter_jsonl_rows(path)
+        return
+    if suffix == ".xml":
+        yield from _iter_xml_rows(path)
+        return
+    raise ValueError(f"Unsupported file type: {suffix or '<none>'}. Supported: .csv, .tsv, .txt, .xlsx, .xls, .json, .jsonl, .xml")
 
 
 def load_uploaded_headers(file_path: str | Path) -> list[str]:
     path = Path(file_path)
     suffix = path.suffix.lower()
     if suffix == ".csv":
-        with path.open("r", encoding="utf-8-sig", newline="") as handle:
-            reader = csv.reader(handle)
-            return [header.strip() for header in next(reader, []) if str(header).strip()]
+        return _read_delimited_headers(path, ",")
+    if suffix == ".tsv":
+        return _read_delimited_headers(path, "\t")
+    if suffix == ".txt":
+        return _read_delimited_headers(path, ",")
     if suffix == ".xlsx":
         try:
             from openpyxl import load_workbook
@@ -126,7 +332,13 @@ def load_uploaded_headers(file_path: str | Path) -> list[str]:
         if sheet.nrows == 0:
             return []
         return [header for header in _clean_headers(sheet.row_values(0)) if header]
-    raise ValueError(f"Unsupported file type: {suffix or '<none>'}. Supported: .csv, .xlsx, .xls")
+    if suffix == ".json":
+        return _headers_from_rows(list(_iter_json_rows(path)))
+    if suffix == ".jsonl":
+        return _headers_from_rows(list(_iter_jsonl_rows(path)))
+    if suffix == ".xml":
+        return _headers_from_rows(list(_iter_xml_rows(path)))
+    raise ValueError(f"Unsupported file type: {suffix or '<none>'}. Supported: .csv, .tsv, .txt, .xlsx, .xls, .json, .jsonl, .xml")
 
 
 def _split_csv_list(value: str) -> list[str]:

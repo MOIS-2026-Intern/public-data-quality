@@ -11,17 +11,32 @@ try:
         QUALITY_DETECTION_RESULTS_CSV_NAME,
         VALIDATION_OUTPUT_DIR_NAME,
     )
+    from .core.reporting import write_error_report
 except ImportError:  # pragma: no cover
     from core.config.constants import (
         QUALITY_DETECTION_RESULTS_CSV_NAME,
         VALIDATION_OUTPUT_DIR_NAME,
     )
+    from core.reporting import write_error_report
 
 
 DETECTION_MATRIX_METADATA_FIELDS = [
     "dataset_name",
     "row_index",
 ]
+PIPELINE_PROGRESS_STEPS = (
+    ("load_reference_data", "입력 형식 확인"),
+    ("normalize_columns", "컬럼 구조 정리"),
+    ("profile_values", "데이터 프로파일링"),
+    ("route_rules", "검증 기준 라우팅"),
+    ("semantic_profile", "컬럼 의미 분석"),
+    ("validate", "규칙 기반 검증"),
+    ("categorical_semantic_validate", "정밀/문맥 검증"),
+    ("propose_repairs", "수정 제안 구성"),
+    ("verify_results", "최종 결과 정리"),
+)
+REPORT_PROGRESS_STEP = ("write_reports", "리포트 생성")
+PIPELINE_PROGRESS_STEP_LABELS = dict(PIPELINE_PROGRESS_STEPS + (REPORT_PROGRESS_STEP,))
 
 
 def _build_graph(
@@ -158,6 +173,134 @@ def _write_detection_result_csv(result: dict, output_dir: Path | None = None) ->
     return str(output_path)
 
 
+def _write_error_report(result: dict, validation_rows: list[dict[str, str]]) -> str:
+    return str(
+        write_error_report(
+            result=result,
+            validation_rows=validation_rows,
+            output_dir=validation_output_dir(),
+        )
+    )
+
+
+def _pipeline_input(
+    *,
+    dataset_id: str | None,
+    dataset_name: str | None,
+    meta_csv: str | None,
+    uploaded_dataset_csv: str | None,
+    uploaded_dataset_name: str | None,
+    use_llm_agents: bool,
+    llm_model: str | None,
+    llm_fast_model: str | None,
+    llm_strong_model: str | None,
+) -> dict[str, Any]:
+    return {
+        "dataset_id": dataset_id,
+        "dataset_name": dataset_name,
+        "meta_csv_path": str(Path(meta_csv)) if meta_csv else None,
+        "uploaded_dataset_path": str(Path(uploaded_dataset_csv)) if uploaded_dataset_csv else None,
+        "uploaded_dataset_name": uploaded_dataset_name,
+        "use_llm_agents": use_llm_agents,
+        "llm_model": llm_model,
+        "llm_fast_model": llm_fast_model,
+        "llm_strong_model": llm_strong_model,
+    }
+
+
+def _response_from_pipeline_state(result: dict) -> dict:
+    response = _json_safe({
+        "summary": result["summary"],
+        "preview_headers": result.get("preview_headers", []),
+        "preview_rows": result.get("preview_rows", []),
+        "columns": [column.model_dump() for column in result["columns"]],
+        "findings": [finding.model_dump() for finding in result["findings"]],
+        "agent_traces": [trace.model_dump() for trace in result.get("agent_traces", [])],
+    })
+    response["summary"]["validation_result_csv"] = _write_detection_result_csv(response)
+    response["summary"]["error_report_xlsx"] = _write_error_report(
+        response,
+        result.get("validation_rows", []),
+    )
+    return response
+
+
+def _pipeline_progress_event(node_name: str, step_index: int, step_total: int) -> dict[str, Any]:
+    label = PIPELINE_PROGRESS_STEP_LABELS.get(node_name, node_name)
+    message = f"{label} 중" if node_name == REPORT_PROGRESS_STEP[0] else f"{label} 완료"
+    return {
+        "node": node_name,
+        "stage_label": label,
+        "stage_index": step_index,
+        "stage_total": step_total,
+        "message": message,
+    }
+
+
+def stream_pipeline(
+    *,
+    dataset_id: str | None = None,
+    dataset_name: str | None = None,
+    meta_csv: str | None = None,
+    uploaded_dataset_csv: str | None = None,
+    uploaded_dataset_name: str | None = None,
+    use_llm_agents: bool = False,
+    openai_api_key: str | None = None,
+    llm_model: str | None = None,
+    llm_fast_model: str | None = None,
+    llm_strong_model: str | None = None,
+):
+    if not uploaded_dataset_csv and not dataset_id and not dataset_name:
+        raise ValueError("uploaded_dataset_csv, dataset_id, or dataset_name 중 하나는 필요합니다.")
+    if not uploaded_dataset_csv and not meta_csv:
+        raise ValueError("dataset_id 또는 dataset_name으로 분석하려면 meta_csv가 필요합니다.")
+
+    graph = _build_graph(
+        openai_api_key=openai_api_key,
+        llm_model=llm_model,
+        llm_fast_model=llm_fast_model,
+        llm_strong_model=llm_strong_model,
+    )
+    graph_input = _pipeline_input(
+        dataset_id=dataset_id,
+        dataset_name=dataset_name,
+        meta_csv=meta_csv,
+        uploaded_dataset_csv=uploaded_dataset_csv,
+        uploaded_dataset_name=uploaded_dataset_name,
+        use_llm_agents=use_llm_agents,
+        llm_model=llm_model,
+        llm_fast_model=llm_fast_model,
+        llm_strong_model=llm_strong_model,
+    )
+    result_state: dict[str, Any] = dict(graph_input)
+    step_positions = {node_name: index for index, (node_name, _) in enumerate(PIPELINE_PROGRESS_STEPS, start=1)}
+    step_total = len(PIPELINE_PROGRESS_STEPS) + 1
+
+    for update in graph.stream(graph_input, stream_mode="updates"):
+        if not isinstance(update, dict):
+            continue
+        for node_name, node_update in update.items():
+            if isinstance(node_update, dict):
+                result_state.update(node_update)
+            step_index = step_positions.get(node_name)
+            if step_index is None:
+                continue
+            yield {
+                "kind": "progress",
+                **_pipeline_progress_event(node_name, step_index, step_total),
+            }
+
+    report_step_index = len(PIPELINE_PROGRESS_STEPS) + 1
+    yield {
+        "kind": "progress",
+        **_pipeline_progress_event(REPORT_PROGRESS_STEP[0], report_step_index, step_total),
+    }
+    yield {
+        "kind": "result",
+        "result": _response_from_pipeline_state(result_state),
+    }
+
+
 def run_pipeline(
     *,
     dataset_id: str | None = None,
@@ -183,26 +326,16 @@ def run_pipeline(
         llm_strong_model=llm_strong_model,
     )
     result = graph.invoke(
-        {
-            "dataset_id": dataset_id,
-            "dataset_name": dataset_name,
-            "meta_csv_path": str(Path(meta_csv)) if meta_csv else None,
-            "uploaded_dataset_path": str(Path(uploaded_dataset_csv)) if uploaded_dataset_csv else None,
-            "uploaded_dataset_name": uploaded_dataset_name,
-            "use_llm_agents": use_llm_agents,
-            "llm_model": llm_model,
-            "llm_fast_model": llm_fast_model,
-            "llm_strong_model": llm_strong_model,
-        }
+        _pipeline_input(
+            dataset_id=dataset_id,
+            dataset_name=dataset_name,
+            meta_csv=meta_csv,
+            uploaded_dataset_csv=uploaded_dataset_csv,
+            uploaded_dataset_name=uploaded_dataset_name,
+            use_llm_agents=use_llm_agents,
+            llm_model=llm_model,
+            llm_fast_model=llm_fast_model,
+            llm_strong_model=llm_strong_model,
+        )
     )
-
-    response = _json_safe({
-        "summary": result["summary"],
-        "preview_headers": result.get("preview_headers", []),
-        "preview_rows": result.get("preview_rows", []),
-        "columns": [column.model_dump() for column in result["columns"]],
-        "findings": [finding.model_dump() for finding in result["findings"]],
-        "agent_traces": [trace.model_dump() for trace in result.get("agent_traces", [])],
-    })
-    response["summary"]["validation_result_csv"] = _write_detection_result_csv(response)
-    return response
+    return _response_from_pipeline_state(result)

@@ -2,13 +2,15 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import sys
 import tempfile
 import traceback
 import types
 from pathlib import Path, PureWindowsPath
+from typing import Any
 
-from flask import Flask, Response, jsonify, make_response, request, send_from_directory, stream_with_context
+from flask import Flask, Response, abort, jsonify, make_response, request, send_file, send_from_directory, stream_with_context
 from werkzeug.datastructures import FileStorage
 from werkzeug.exceptions import HTTPException
 from werkzeug.utils import secure_filename
@@ -24,7 +26,19 @@ if __package__ in (None, ""):  # pragma: no cover
         sys.modules[package_name] = package
     __package__ = package_name
 
-from .service import run_pipeline
+from .core.io.sources import (
+    PreparedDataset,
+    prepare_api_datasets,
+    prepare_saved_dataset,
+    prepare_url_datasets,
+)
+from .service import (
+    PIPELINE_PROGRESS_STEPS,
+    REPORT_PROGRESS_STEP,
+    run_pipeline,
+    stream_pipeline,
+    validation_output_dir,
+)
 
 
 def _uploaded_display_filename(filename: str | None) -> str:
@@ -43,37 +57,233 @@ def _uploaded_files() -> list[FileStorage]:
     return [uploaded_file for uploaded_file in files if uploaded_file and uploaded_file.filename]
 
 
-def _analyze_uploaded_file(
+def _parse_bool(value: Any, default: bool = False) -> bool:
+    if value is None or value == "":
+        return default
+    if isinstance(value, bool):
+        return value
+    return str(value).strip().lower() in {"1", "true", "yes", "y", "on"}
+
+
+def _request_payload() -> dict[str, Any]:
+    if request.is_json:
+        payload = request.get_json(silent=True) or {}
+        if not isinstance(payload, dict):
+            raise ValueError("JSON 요청 본문은 객체 형식이어야 합니다.")
+        return payload
+
+    payload: dict[str, Any] = {}
+    for key in request.form:
+        values = [value for value in request.form.getlist(key) if value not in (None, "")]
+        if not values:
+            continue
+        payload[key] = values[0] if len(values) == 1 else values
+    return payload
+
+
+def _first_payload_value(payload: dict[str, Any], *names: str) -> Any:
+    for name in names:
+        value = payload.get(name)
+        if isinstance(value, list):
+            for item in value:
+                if item not in (None, ""):
+                    return item
+            continue
+        if value not in (None, ""):
+            return value
+    return None
+
+
+def _payload_values(payload: dict[str, Any], *names: str, split_lines: bool = False) -> list[str]:
+    values: list[str] = []
+    for name in names:
+        value = payload.get(name)
+        if value in (None, ""):
+            continue
+        items = value if isinstance(value, list) else [value]
+        for item in items:
+            if item in (None, ""):
+                continue
+            text = str(item).strip()
+            if not text:
+                continue
+            if split_lines:
+                values.extend(line.strip() for line in text.splitlines() if line.strip())
+            else:
+                values.append(text)
+    return values
+
+
+def _parse_json_object_field(payload: dict[str, Any], *names: str) -> dict[str, str]:
+    value = _first_payload_value(payload, *names)
+    if value in (None, ""):
+        return {}
+    if isinstance(value, dict):
+        return {str(key): str(nested_value) for key, nested_value in value.items() if nested_value is not None}
+    try:
+        parsed = json.loads(str(value))
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"{names[0]} 값은 JSON 객체 형식이어야 합니다.") from exc
+    if not isinstance(parsed, dict):
+        raise ValueError(f"{names[0]} 값은 JSON 객체 형식이어야 합니다.")
+    return {str(key): str(nested_value) for key, nested_value in parsed.items() if nested_value is not None}
+
+
+def _parse_params_field(payload: dict[str, Any], *names: str) -> dict[str, str]:
+    value = _first_payload_value(payload, *names)
+    if value in (None, ""):
+        return {}
+    if isinstance(value, dict):
+        return {str(key): str(nested_value) for key, nested_value in value.items() if nested_value is not None}
+
+    text = str(value).strip()
+    if not text:
+        return {}
+    try:
+        parsed = json.loads(text)
+    except json.JSONDecodeError:
+        parsed = None
+    if isinstance(parsed, dict):
+        return {str(key): str(nested_value) for key, nested_value in parsed.items() if nested_value is not None}
+
+    params: dict[str, str] = {}
+    for line in text.splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        delimiter = "=" if "=" in stripped else ":" if ":" in stripped else None
+        if not delimiter:
+            raise ValueError(f"{names[0]} 값은 JSON 객체 또는 key=value 줄 목록이어야 합니다.")
+        key, param_value = stripped.split(delimiter, 1)
+        if key.strip():
+            params[key.strip()] = param_value.strip()
+    return params
+
+
+def _parse_body_field(payload: dict[str, Any], *names: str) -> str | None:
+    value = _first_payload_value(payload, *names)
+    if value in (None, ""):
+        return None
+    if isinstance(value, (dict, list)):
+        return json.dumps(value, ensure_ascii=False)
+    return str(value)
+
+
+def _public_data_api_params(payload: dict[str, Any]) -> dict[str, str]:
+    params = _parse_params_field(payload, "api_params", "params", "query_params")
+
+    service_key = _first_payload_value(payload, "service_key", "serviceKey", "api_service_key")
+    page_no = _first_payload_value(payload, "page_no", "pageNo")
+    num_of_rows = _first_payload_value(payload, "num_of_rows", "numOfRows")
+    response_type = _first_payload_value(payload, "api_response_type", "response_type")
+    response_type_param = str(_first_payload_value(payload, "api_response_type_param") or "_type").strip()
+
+    if service_key:
+        params["serviceKey"] = str(service_key).strip()
+    if page_no:
+        params["pageNo"] = str(page_no).strip()
+    if num_of_rows:
+        params["numOfRows"] = str(num_of_rows).strip()
+    if response_type and response_type_param and response_type_param.lower() != "none":
+        params[response_type_param] = str(response_type).strip()
+    return params
+
+
+def _request_options(payload: dict[str, Any]) -> dict[str, Any]:
+    openai_api_key = str(_first_payload_value(payload, "openai_api_key") or "").strip() or None
+    if openai_api_key is not None:
+        try:
+            f"Bearer {openai_api_key}".encode("latin-1")
+        except UnicodeEncodeError as exc:
+            raise ValueError(
+                "OpenAI API Key에 한글 등 HTTP 헤더로 보낼 수 없는 문자가 포함되어 있습니다. "
+                "sk-로 시작하는 API Key를 그대로 입력하세요."
+            ) from exc
+
+    return {
+        "use_llm_agents": _parse_bool(_first_payload_value(payload, "use_llm_agents"), default=False),
+        "openai_api_key": openai_api_key,
+        "llm_model": _first_payload_value(payload, "llm_model") or None,
+        "llm_fast_model": _first_payload_value(payload, "llm_fast_model") or None,
+        "llm_strong_model": _first_payload_value(payload, "llm_strong_model") or None,
+    }
+
+
+def _save_uploaded_file(
     *,
     uploaded_file: FileStorage,
     tmp_dir: str,
     index: int,
-    use_llm_agents: bool,
-    openai_api_key: str | None,
-    llm_model: str | None,
-    llm_fast_model: str | None,
-    llm_strong_model: str | None,
-) -> dict:
+) -> list[PreparedDataset]:
     display_filename = _uploaded_display_filename(uploaded_file.filename)
     filename = secure_filename(display_filename) or f"uploaded_dataset_{index}.csv"
     suffix = Path(filename).suffix or Path(display_filename).suffix or ".csv"
     uploaded_path = Path(tmp_dir) / f"dataset_{index}{suffix}"
     uploaded_file.save(uploaded_path)
-    return run_pipeline(
-        uploaded_dataset_csv=str(uploaded_path),
-        uploaded_dataset_name=display_filename,
-        use_llm_agents=use_llm_agents,
-        openai_api_key=openai_api_key,
-        llm_model=llm_model,
-        llm_fast_model=llm_fast_model,
-        llm_strong_model=llm_strong_model,
+    return prepare_saved_dataset(uploaded_path, display_filename, tmp_dir, source_type="file")
+
+
+def _prepare_request_datasets(payload: dict[str, Any], tmp_dir: str) -> list[PreparedDataset]:
+    prepared: list[PreparedDataset] = []
+    for index, uploaded_file in enumerate(_uploaded_files(), start=1):
+        prepared.extend(_save_uploaded_file(uploaded_file=uploaded_file, tmp_dir=tmp_dir, index=index))
+
+    source_hint = str(_first_payload_value(payload, "source_type", "input_type", "type") or "").strip().lower()
+    generic_urls = _payload_values(payload, "url", "source_url", "nia_url", split_lines=True)
+    has_api_options = any(
+        _first_payload_value(payload, name) is not None
+        for name in (
+            "api_method",
+            "method",
+            "api_headers",
+            "headers",
+            "api_body",
+            "body",
+            "request_body",
+            "service_key",
+            "serviceKey",
+            "api_service_key",
+            "page_no",
+            "pageNo",
+            "num_of_rows",
+            "numOfRows",
+            "api_params",
+            "params",
+            "query_params",
+            "api_response_type",
+            "response_type",
+        )
     )
 
+    data_urls = _payload_values(payload, "data_url", "dataset_url", "file_url", "download_url", split_lines=True)
+    if not data_urls and generic_urls and source_hint not in {"api", "openapi"} and not has_api_options:
+        data_urls = generic_urls
+    for data_url in data_urls:
+        prepared.extend(prepare_url_datasets(data_url, tmp_dir))
 
-def _analyze_saved_file(
+    api_urls = _payload_values(payload, "api_url", "apiEndpoint", "endpoint", "openapi_url", split_lines=True)
+    if not api_urls and generic_urls and (source_hint in {"api", "openapi"} or has_api_options):
+        api_urls = generic_urls
+    for api_url in api_urls:
+        prepared.extend(
+            prepare_api_datasets(
+                api_url,
+                tmp_dir,
+                method=str(_first_payload_value(payload, "api_method", "method") or "GET"),
+                headers=_parse_json_object_field(payload, "api_headers", "headers"),
+                body=_parse_body_field(payload, "api_body", "body", "request_body"),
+                params=_public_data_api_params(payload),
+            )
+        )
+
+    if not prepared:
+        raise ValueError("분석할 입력 데이터(dataset_file, url, api_url 중 하나)가 필요합니다.")
+    return prepared
+
+
+def _analyze_prepared_dataset(
     *,
-    uploaded_path: str,
-    display_filename: str,
+    dataset: PreparedDataset,
     use_llm_agents: bool,
     openai_api_key: str | None,
     llm_model: str | None,
@@ -81,8 +291,8 @@ def _analyze_saved_file(
     llm_strong_model: str | None,
 ) -> dict:
     return run_pipeline(
-        uploaded_dataset_csv=uploaded_path,
-        uploaded_dataset_name=display_filename,
+        uploaded_dataset_csv=str(dataset.path),
+        uploaded_dataset_name=dataset.display_name,
         use_llm_agents=use_llm_agents,
         openai_api_key=openai_api_key,
         llm_model=llm_model,
@@ -109,8 +319,52 @@ def _batch_summary(items: list[dict]) -> dict:
     }
 
 
-def _progress_event(event_type: str, **payload) -> str:
-    return json.dumps({"type": event_type, **payload}, ensure_ascii=False) + "\n"
+def _progress_event(event_type: str, **payload) -> bytes:
+    return (json.dumps({"type": event_type, **payload}, ensure_ascii=False) + "\n").encode("utf-8")
+
+
+def _stage_steps(completed_stage_index: int) -> list[dict[str, str]]:
+    stages = PIPELINE_PROGRESS_STEPS + (REPORT_PROGRESS_STEP,)
+    total = len(stages)
+    next_stage_index = completed_stage_index + 1
+    return [
+        {
+            "id": stage_id,
+            "label": label,
+            "status": (
+                "done"
+                if index <= completed_stage_index
+                else "active"
+                if index == next_stage_index and completed_stage_index < total
+                else "pending"
+            ),
+        }
+        for index, (stage_id, label) in enumerate(stages, start=1)
+    ]
+
+
+def _report_download_path(value: str) -> Path:
+    if not value:
+        abort(404)
+    reports_dir = (validation_output_dir() / "reports").resolve()
+    candidate = Path(value)
+    if not candidate.is_absolute():
+        candidate = reports_dir / candidate
+    resolved = candidate.resolve()
+    if reports_dir not in resolved.parents and resolved != reports_dir:
+        abort(404)
+    if not resolved.exists() or not resolved.is_file():
+        abort(404)
+    return resolved
+
+
+def _download_name(filename: str) -> str:
+    safe_name = re.sub(r"[^0-9A-Za-z._-]+", "_", filename).strip("._")
+    if not safe_name:
+        safe_name = "error_report.xlsx"
+    if not safe_name.lower().endswith(".xlsx"):
+        safe_name = f"{Path(safe_name).stem or 'error_report'}.xlsx"
+    return safe_name
 
 
 def create_app() -> Flask:
@@ -138,60 +392,42 @@ def create_app() -> Flask:
             }
         )
 
+    @app.get("/api/reports/download")
+    def download_report():
+        report_path = _report_download_path(request.args.get("path", ""))
+        return send_file(
+            report_path,
+            as_attachment=True,
+            download_name=_download_name(report_path.name),
+            mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        )
+
     @app.post("/api/analyze")
     @app.post("/analyze")
     @app.post("/api/index")
     @app.post("/api/index.py")
     def analyze():
         try:
-            if not (request.content_type and request.content_type.startswith("multipart/form-data")):
-                return jsonify({"error": "Use multipart/form-data with dataset_file"}), 400
-
-            use_llm_agents = request.form.get("use_llm_agents", "false").lower() == "true"
-            openai_api_key = (request.form.get("openai_api_key") or "").strip() or None
-            llm_model = request.form.get("llm_model") or None
-            llm_fast_model = request.form.get("llm_fast_model") or None
-            llm_strong_model = request.form.get("llm_strong_model") or None
-            uploaded_files = _uploaded_files()
-
-            if not uploaded_files:
-                return jsonify({"error": "dataset_file is required"}), 400
+            payload = _request_payload()
+            options = _request_options(payload)
 
             with tempfile.TemporaryDirectory(prefix="public_data_quality_upload_", dir=_runtime_tmp_dir()) as tmp_dir:
-                if len(uploaded_files) == 1:
-                    result = _analyze_uploaded_file(
-                        uploaded_file=uploaded_files[0],
-                        tmp_dir=tmp_dir,
-                        index=1,
-                        use_llm_agents=use_llm_agents,
-                        openai_api_key=openai_api_key,
-                        llm_model=llm_model,
-                        llm_fast_model=llm_fast_model,
-                        llm_strong_model=llm_strong_model,
-                    )
+                prepared_datasets = _prepare_request_datasets(payload, tmp_dir)
+                if len(prepared_datasets) == 1:
+                    result = _analyze_prepared_dataset(dataset=prepared_datasets[0], **options)
                     return jsonify(result)
 
                 items = []
-                for index, uploaded_file in enumerate(uploaded_files, start=1):
-                    display_filename = _uploaded_display_filename(uploaded_file.filename)
+                for dataset in prepared_datasets:
                     try:
-                        result = _analyze_uploaded_file(
-                            uploaded_file=uploaded_file,
-                            tmp_dir=tmp_dir,
-                            index=index,
-                            use_llm_agents=use_llm_agents,
-                            openai_api_key=openai_api_key,
-                            llm_model=llm_model,
-                            llm_fast_model=llm_fast_model,
-                            llm_strong_model=llm_strong_model,
-                        )
-                        items.append({"ok": True, "filename": display_filename, "result": result})
+                        result = _analyze_prepared_dataset(dataset=dataset, **options)
+                        items.append({"ok": True, "filename": dataset.display_name, "result": result})
                     except Exception as exc:  # pragma: no cover
                         traceback.print_exc()
                         items.append(
                             {
                                 "ok": False,
-                                "filename": display_filename,
+                                "filename": dataset.display_name,
                                 "error": str(exc) or exc.__class__.__name__,
                             }
                         )
@@ -209,41 +445,19 @@ def create_app() -> Flask:
     @app.post("/analyze-stream")
     def analyze_stream():
         try:
-            if not (request.content_type and request.content_type.startswith("multipart/form-data")):
-                return jsonify({"error": "Use multipart/form-data with dataset_file"}), 400
-
-            use_llm_agents = request.form.get("use_llm_agents", "false").lower() == "true"
-            openai_api_key = (request.form.get("openai_api_key") or "").strip() or None
-            llm_model = request.form.get("llm_model") or None
-            llm_fast_model = request.form.get("llm_fast_model") or None
-            llm_strong_model = request.form.get("llm_strong_model") or None
-            uploaded_files = _uploaded_files()
-
-            if not uploaded_files:
-                return jsonify({"error": "dataset_file is required"}), 400
+            payload = _request_payload()
+            options = _request_options(payload)
 
             tmp_manager = tempfile.TemporaryDirectory(prefix="public_data_quality_upload_", dir=_runtime_tmp_dir())
-            saved_files = []
             try:
-                for index, uploaded_file in enumerate(uploaded_files, start=1):
-                    display_filename = _uploaded_display_filename(uploaded_file.filename)
-                    filename = secure_filename(display_filename) or f"uploaded_dataset_{index}.csv"
-                    suffix = Path(filename).suffix or Path(display_filename).suffix or ".csv"
-                    uploaded_path = Path(tmp_manager.name) / f"dataset_{index}{suffix}"
-                    uploaded_file.save(uploaded_path)
-                    saved_files.append(
-                        {
-                            "filename": display_filename,
-                            "path": str(uploaded_path),
-                        }
-                    )
+                prepared_datasets = _prepare_request_datasets(payload, tmp_manager.name)
             except Exception:
                 tmp_manager.cleanup()
                 raise
 
             @stream_with_context
             def generate():
-                total_files = len(saved_files)
+                total_files = len(prepared_datasets)
                 items = []
                 try:
                     yield _progress_event(
@@ -252,10 +466,13 @@ def create_app() -> Flask:
                         current=0,
                         total=total_files,
                         message="분석 준비 중",
+                        stage_index=0,
+                        stage_total=len(PIPELINE_PROGRESS_STEPS) + 1,
+                        stages=_stage_steps(0),
                     )
 
-                    for index, saved_file in enumerate(saved_files, start=1):
-                        display_filename = saved_file["filename"]
+                    for index, dataset in enumerate(prepared_datasets, start=1):
+                        display_filename = dataset.display_name
                         started_progress = int(((index - 1) / total_files) * 100)
                         yield _progress_event(
                             "progress",
@@ -263,19 +480,49 @@ def create_app() -> Flask:
                             current=index - 1,
                             total=total_files,
                             filename=display_filename,
-                            message=f"{display_filename} 분석 중",
+                            message="분석 중",
+                            stage_index=0,
+                            stage_total=len(PIPELINE_PROGRESS_STEPS) + 1,
+                            stages=_stage_steps(0),
                         )
 
                         try:
-                            result = _analyze_saved_file(
-                                uploaded_path=saved_file["path"],
-                                display_filename=display_filename,
-                                use_llm_agents=use_llm_agents,
-                                openai_api_key=openai_api_key,
-                                llm_model=llm_model,
-                                llm_fast_model=llm_fast_model,
-                                llm_strong_model=llm_strong_model,
-                            )
+                            result = None
+                            for pipeline_event in stream_pipeline(
+                                uploaded_dataset_csv=str(dataset.path),
+                                uploaded_dataset_name=dataset.display_name,
+                                **options,
+                            ):
+                                if pipeline_event.get("kind") == "result":
+                                    result = pipeline_event.get("result")
+                                    continue
+                                if pipeline_event.get("kind") != "progress":
+                                    continue
+
+                                stage_index = int(pipeline_event.get("stage_index") or 0)
+                                stage_total = int(pipeline_event.get("stage_total") or 1)
+                                completed_stage_index = (
+                                    stage_index - 1
+                                    if pipeline_event.get("node") == REPORT_PROGRESS_STEP[0]
+                                    else stage_index
+                                )
+                                stage_fraction = stage_index / max(1, stage_total)
+                                progress = int(((index - 1 + stage_fraction) / total_files) * 100)
+                                yield _progress_event(
+                                    "progress",
+                                    progress=min(progress, 99),
+                                    current=index - 1,
+                                    total=total_files,
+                                    filename=display_filename,
+                                    stage_label=pipeline_event.get("stage_label", ""),
+                                    stage_index=stage_index,
+                                    stage_total=stage_total,
+                                    stages=_stage_steps(completed_stage_index),
+                                    message=pipeline_event.get("message", "분석 중"),
+                                )
+
+                            if result is None:
+                                raise RuntimeError("분석 결과를 생성하지 못했습니다.")
                             items.append({"ok": True, "filename": display_filename, "result": result})
                             completed_progress = int((index / total_files) * 100)
                             yield _progress_event(
@@ -284,7 +531,10 @@ def create_app() -> Flask:
                                 current=index,
                                 total=total_files,
                                 filename=display_filename,
-                                message=f"{display_filename} 완료",
+                                stage_index=len(PIPELINE_PROGRESS_STEPS) + 1,
+                                stage_total=len(PIPELINE_PROGRESS_STEPS) + 1,
+                                stages=_stage_steps(len(PIPELINE_PROGRESS_STEPS) + 1),
+                                message="완료",
                             )
                         except Exception as exc:  # pragma: no cover
                             traceback.print_exc()
@@ -303,7 +553,10 @@ def create_app() -> Flask:
                                 total=total_files,
                                 filename=display_filename,
                                 error=str(exc) or exc.__class__.__name__,
-                                message=f"{display_filename} 실패",
+                                stage_index=len(PIPELINE_PROGRESS_STEPS) + 1,
+                                stage_total=len(PIPELINE_PROGRESS_STEPS) + 1,
+                                stages=_stage_steps(len(PIPELINE_PROGRESS_STEPS) + 1),
+                                message="실패",
                             )
 
                     if len(items) == 1 and items[0].get("ok") and items[0].get("result"):
