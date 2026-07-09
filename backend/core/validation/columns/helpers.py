@@ -1,12 +1,62 @@
 from __future__ import annotations
 
 import re
+import unicodedata
 from collections.abc import Callable
 
 from ...schema.models import ColumnProfile
 from .context import Rows
 
 RowPredicate = Callable[[str], bool]
+
+DETAIL_ADDRESS_PLACEHOLDER_VALUES = {
+    "-",
+    "--",
+    "---",
+    ".",
+    "·",
+    "없음",
+    "해당없음",
+    "해당없슴",
+    "무",
+    "미상",
+    "불명",
+    "N/A",
+    "NA",
+    "NULL",
+    "NONE",
+    "NAN",
+}
+
+COMPLETE_DETAIL_ADDRESS_VALUES = {
+    "앞",
+    "뒤",
+    "정문",
+    "후문",
+    "입구",
+    "출입구",
+    "본관",
+    "별관",
+    "신관",
+    "구관",
+    "분관",
+    "동관",
+    "서관",
+    "남관",
+    "북관",
+    "지상",
+    "지하",
+    "옥상",
+    "주차장",
+}
+
+COMPLETE_DETAIL_ADDRESS_PATTERNS = (
+    r"^[가-힣A-Z]\d?동$",
+    r"^(?:B|지하)\d+층?$",
+    r"^\d+층$",
+    r"^\d+호$",
+)
+DASH_LIKE_RE = re.compile(r"^[\-\u2010-\u2015\u2212\uFE58\uFE63\uFF0D]+$")
 
 
 def matching_row_indexes(
@@ -98,6 +148,13 @@ def looks_incomplete_detail_address(value: str) -> bool:
     text = re.sub(r"\s+", "", value or "")
     if not text:
         return False
+    normalized_placeholder = unicodedata.normalize("NFKC", text).upper()
+    if normalized_placeholder in DETAIL_ADDRESS_PLACEHOLDER_VALUES or DASH_LIKE_RE.fullmatch(text):
+        return False
+    if text in COMPLETE_DETAIL_ADDRESS_VALUES:
+        return False
+    if any(re.fullmatch(pattern, text) for pattern in COMPLETE_DETAIL_ADDRESS_PATTERNS):
+        return False
     if len(text) <= 1 and re.search(r"[가-힣]", text):
         return True
     if len(text) <= 2 and re.fullmatch(r"[가-힣]+", text):
@@ -132,11 +189,6 @@ def looks_truncated_address_value(value: str) -> bool:
     if text.count("{") > text.count("}"):
         return True
     if re.search(r"\([^)]+$", text):
-        return True
-    if (
-        re.search(r"(요양|노인요|어린이|초등|중학|고등|복지|센터|기관|시설)$", text)
-        and "(" in text
-    ):
         return True
     return False
 

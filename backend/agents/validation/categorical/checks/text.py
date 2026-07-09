@@ -161,6 +161,13 @@ def is_numeric_like_value(value: str) -> bool:
     return bool(re.fullmatch(r"[-+]?\d+(?:,\d{3})*(?:\.\d+)?", text))
 
 
+def looks_url_like_value(value: str) -> bool:
+    text = str(value or "").strip().lower()
+    if not text:
+        return False
+    return "http://" in text or "https://" in text or bool(re.search(r"\bwww\.[^\s]+", text))
+
+
 def looks_malformed_text_value(value: str) -> bool:
     text = str(value or "").strip()
     if not text:
@@ -171,6 +178,8 @@ def looks_malformed_text_value(value: str) -> bool:
         return True
     if re.search(r"[ㄱ-ㅎㅏ-ㅣ]{2,}", text):
         return True
+    if looks_url_like_value(text):
+        return False
     if re.search(r"[가-힣A-Za-z0-9)][ㄱ-ㅎㅏ-ㅣ]$", text):
         return True
     if re.search(r"(~{2,}|/{2,}|※{2,}|□{2,}|[#@$%^*_={}|\\]{3,})", text):

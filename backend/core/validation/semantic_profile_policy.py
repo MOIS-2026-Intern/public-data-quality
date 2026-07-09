@@ -7,21 +7,11 @@ from ..config.constants import (
     LLM_SEMANTIC_PROFILE_SKIP_TAGS,
 )
 from ..schema.models import ColumnProfile
+from .free_text import looks_free_text_column
 
 
 def _is_free_text_column(column: ColumnProfile) -> bool:
-    name = column.raw_name.strip()
-    if any(token in name for token in LLM_SEMANTIC_PROFILE_ALWAYS_TRIGGER_NAME_TOKENS):
-        return True
-
-    if column.inferred_primitive_type != "string":
-        return False
-
-    if not column.sample_values:
-        return False
-
-    long_samples = [value.strip() for value in column.sample_values if len(value.strip()) >= 12]
-    return len(long_samples) >= 2
+    return looks_free_text_column(column)
 
 
 def _is_structured_column(column: ColumnProfile) -> bool:

@@ -3,6 +3,8 @@ from __future__ import annotations
 from collections import Counter
 from typing import Any
 
+from ..checks.column import looks_free_text_column
+
 
 def context_columns(columns) -> list[dict[str, Any]]:
     useful_tokens = (
@@ -23,6 +25,8 @@ def context_columns(columns) -> list[dict[str, Any]]:
     )
     selected = []
     for column in columns:
+        if looks_free_text_column(column):
+            continue
         name = f"{column.raw_name} {column.normalized_name}"
         if any(token in name for token in useful_tokens) or {
             "address",

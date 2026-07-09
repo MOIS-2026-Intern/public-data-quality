@@ -187,6 +187,35 @@ def _write_error_report(result: dict, validation_rows: list[dict[str, str]]) -> 
     )
 
 
+def _finding_row_values(finding: dict, validation_rows: list[dict[str, str]]) -> dict[str, str]:
+    column_name = str(finding.get("column_name") or "")
+    if not column_name:
+        return {}
+
+    row_values: dict[str, str] = {}
+    for row_index in finding.get("row_indexes") or []:
+        try:
+            parsed = int(row_index)
+        except (TypeError, ValueError):
+            continue
+        if parsed <= 0 or parsed > len(validation_rows):
+            continue
+        row_values[str(parsed)] = validation_rows[parsed - 1].get(column_name, "")
+    return row_values
+
+
+def _response_findings_with_row_values(result: dict) -> list[dict]:
+    validation_rows = result.get("validation_rows", [])
+    findings = []
+    for finding in result["findings"]:
+        finding_payload = finding.model_dump()
+        row_values = _finding_row_values(finding_payload, validation_rows)
+        if row_values:
+            finding_payload["row_values"] = row_values
+        findings.append(finding_payload)
+    return findings
+
+
 def _pipeline_input(
     *,
     dataset_id: str | None,
@@ -218,7 +247,7 @@ def _response_from_pipeline_state(result: dict) -> dict:
         "preview_headers": result.get("preview_headers", []),
         "preview_rows": result.get("preview_rows", []),
         "columns": [column.model_dump() for column in result["columns"]],
-        "findings": [finding.model_dump() for finding in result["findings"]],
+        "findings": _response_findings_with_row_values(result),
         "agent_traces": [trace.model_dump() for trace in result.get("agent_traces", [])],
     })
     response["summary"]["validation_result_csv"] = _write_detection_result_csv(response)

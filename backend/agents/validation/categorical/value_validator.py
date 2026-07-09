@@ -7,8 +7,10 @@ try:
     from ....core.config.constants import LLM_FAST_MODEL, LLM_STRONG_MODEL
     from ....core.llm import ChatLLMClient
     from ....core.llm.categorical import (
+        ADDRESS_DETAIL_SYSTEM_PROMPT,
         CATEGORICAL_VALUE_SYSTEM_PROMPT,
         ROW_CONTEXT_SYSTEM_PROMPT,
+        address_detail_validation_prompt,
         categorical_value_validation_prompt,
         row_context_validation_prompt,
     )
@@ -18,8 +20,10 @@ except ImportError:  # pragma: no cover
     from core.config.constants import LLM_FAST_MODEL, LLM_STRONG_MODEL
     from core.llm import ChatLLMClient
     from core.llm.categorical import (
+        ADDRESS_DETAIL_SYSTEM_PROMPT,
         CATEGORICAL_VALUE_SYSTEM_PROMPT,
         ROW_CONTEXT_SYSTEM_PROMPT,
+        address_detail_validation_prompt,
         categorical_value_validation_prompt,
         row_context_validation_prompt,
     )
@@ -38,6 +42,7 @@ class LLMCategoricalValueValidator:
         "row_context_issues",
         "row_context_manual_reviews",
     )
+    ADDRESS_DETAIL_REVIEW_KEYS = ("address_detail_issues",)
 
     def __init__(
         self,
@@ -157,6 +162,7 @@ class LLMCategoricalValueValidator:
         column_name: str,
         standard_candidate: str | None,
         semantic_tags: list[str],
+        format_kind: str | None,
         values: list[dict[str, Any]],
     ) -> dict[str, Any] | None:
         llm = self._client()
@@ -170,6 +176,7 @@ class LLMCategoricalValueValidator:
                 column_name=column_name,
                 standard_candidate=standard_candidate,
                 semantic_tags=semantic_tags,
+                format_kind=format_kind,
                 values=values,
             ),
             system_prompt=CATEGORICAL_VALUE_SYSTEM_PROMPT,
@@ -215,5 +222,36 @@ class LLMCategoricalValueValidator:
             return None
         payload.setdefault("row_context_issues", [])
         payload.setdefault("row_context_manual_reviews", [])
+        payload.setdefault("overall_confidence", 0.0)
+        return payload
+
+    def validate_address_detail_candidates(
+        self,
+        *,
+        dataset_name: str,
+        provider_name: str,
+        column_name: str,
+        related_columns: list[str],
+        candidates: list[dict[str, Any]],
+    ) -> dict[str, Any] | None:
+        llm = self._client()
+        if llm is None:
+            return None
+
+        payload = self._invoke_json_payload(
+            address_detail_validation_prompt(
+                dataset_name=dataset_name,
+                provider_name=provider_name,
+                column_name=column_name,
+                related_columns=related_columns,
+                candidates=candidates,
+            ),
+            system_prompt=ADDRESS_DETAIL_SYSTEM_PROMPT,
+            review_keys=self.ADDRESS_DETAIL_REVIEW_KEYS,
+            prefer_strong=True,
+        )
+        if payload is None:
+            return None
+        payload.setdefault("address_detail_issues", [])
         payload.setdefault("overall_confidence", 0.0)
         return payload

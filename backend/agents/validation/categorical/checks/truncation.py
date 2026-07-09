@@ -30,6 +30,12 @@ ENTITY_COMPLETION_SUFFIXES = {
     "경로당",
     "관리소",
 }
+INSTITUTION_SUFFIX_COMPLETIONS = {
+    "유치": "유치원",
+    "초등": "초등학교",
+    "초등학": "초등학교",
+    "어린이": "어린이집",
+}
 COMPLETE_LOCATION_VALUES = {
     "정문",
     "후문",
@@ -58,12 +64,72 @@ FACILITY_QUALIFIER_SUFFIXES = {
     "운동장주차장",
     "공영주차장",
 }
+CATEGORY_QUALIFIER_SUFFIXES = {
+    "가칭",
+    "미상",
+    "불명",
+    "예정",
+    "의심",
+    "잠정",
+    "추정",
+}
+ORGANIZATION_BRANCH_SUFFIX_PATTERNS = (
+    r"^[가-힣]+(?:특별자치도|특별자치시|광역시|특별시|자치도|도|시|군|구)(?:지부|지회|분회|본부|본점|지점|출장소|사무소)$",
+    r"^(?:중앙|지역|권역|광역|전국|본부|본점|지점|지부|지회|분회|출장소|사무소)$",
+)
+STRUCTURED_DETAIL_EXACT_SUFFIXES = {
+    "정문",
+    "후문",
+    "입구",
+    "출입구",
+    "앞",
+    "뒤",
+    "뒷편",
+    "뒤편",
+    "동편",
+    "서편",
+    "남편",
+    "북편",
+    "지상",
+    "지하",
+    "본관",
+    "별관",
+    "분관",
+    "동관",
+    "서관",
+    "남관",
+    "북관",
+    "중앙관",
+    "신관",
+    "구관",
+}
+STRUCTURED_DETAIL_EXACT_SUFFIXES_BY_LENGTH = tuple(
+    sorted(STRUCTURED_DETAIL_EXACT_SUFFIXES, key=len, reverse=True)
+)
+STRUCTURED_DETAIL_COMPONENT_PATTERNS = (
+    r"^(?:지하|B)\d+층",
+    r"^\d+(?:,\d+)*층",
+    r"^\d+-\d+층",
+    r"^\d+호실",
+    r"^\d+호",
+    r"^\d+실",
+    r"^\d+동",
+    r"^[A-Z]동",
+    r"^\d+번출구",
+    r"^\d+게이트",
+    r"^[A-Z]게이트",
+)
+NAMED_DETAIL_PREFIX_PATTERNS = (
+    r"^[가-힣A-Za-z0-9]+역",
+)
 
 
 def is_normal_qualifier_suffix(suffix: str) -> bool:
     text = str(suffix or "").strip()
     if not text:
         return False
+    if is_structured_location_detail_suffix(text):
+        return True
 
     normal_suffix_patterns = (
         r"^\d+호점$",
@@ -73,7 +139,45 @@ def is_normal_qualifier_suffix(suffix: str) -> bool:
         r"^별관$",
         r"^본관$",
     )
-    return any(re.fullmatch(pattern, text) for pattern in normal_suffix_patterns)
+    return (
+        text in CATEGORY_QUALIFIER_SUFFIXES
+        or any(re.fullmatch(pattern, text) for pattern in ORGANIZATION_BRANCH_SUFFIX_PATTERNS)
+        or any(re.fullmatch(pattern, text) for pattern in normal_suffix_patterns)
+    )
+
+
+def _consume_structured_detail_component(text: str) -> str | None:
+    for keyword in STRUCTURED_DETAIL_EXACT_SUFFIXES_BY_LENGTH:
+        if text.startswith(keyword):
+            return text[len(keyword) :]
+
+    for pattern in STRUCTURED_DETAIL_COMPONENT_PATTERNS:
+        match = re.match(pattern, text)
+        if match:
+            return text[match.end() :]
+
+    for pattern in NAMED_DETAIL_PREFIX_PATTERNS:
+        match = re.match(pattern, text)
+        if match and match.end() < len(text):
+            return text[match.end() :]
+
+    return None
+
+
+def is_structured_location_detail_suffix(suffix: str) -> bool:
+    remaining = normalized_text(suffix)
+    if not remaining:
+        return False
+
+    # Accept stacked qualifiers such as "본관3층", "101동1층", "백마역1층".
+    consumed = False
+    while remaining:
+        next_remaining = _consume_structured_detail_component(remaining)
+        if next_remaining is None or next_remaining == remaining:
+            return False
+        consumed = True
+        remaining = next_remaining
+    return consumed
 
 
 def is_complete_entity_or_location_value(value: str) -> bool:
@@ -97,6 +201,41 @@ def is_short_korean_entity_prefix(short_norm: str, long_norm: str) -> bool:
     if not suffix:
         return False
     return suffix in ENTITY_COMPLETION_SUFFIXES
+
+
+def is_single_char_entity_completion(short_norm: str, long_norm: str) -> bool:
+    if len(long_norm) != len(short_norm) + 1:
+        return False
+    if not long_norm.startswith(short_norm):
+        return False
+    return any(
+        long_norm.endswith(suffix) and short_norm == long_norm[:-1]
+        for suffix in ENTITY_COMPLETION_SUFFIXES
+    )
+
+
+def is_institution_suffix_completion(short_norm: str, long_norm: str) -> bool:
+    return INSTITUTION_SUFFIX_COMPLETIONS.get(short_norm) == long_norm
+
+
+def find_institution_suffix_completion_pairs(counter: Counter[str]) -> list[tuple[str, str]]:
+    values = [value.strip() for value in counter if value and value.strip()]
+    normalized_values = {
+        value: normalized_text(value)
+        for value in values
+        if normalized_text(value) and not is_numeric_like_value(normalized_text(value))
+    }
+    pairs: list[tuple[str, str]] = []
+    for source, source_norm in normalized_values.items():
+        target_norm = INSTITUTION_SUFFIX_COMPLETIONS.get(source_norm)
+        if not target_norm:
+            continue
+        for target, candidate_norm in normalized_values.items():
+            if source == target:
+                continue
+            if candidate_norm == target_norm:
+                pairs.append((source, target))
+    return sorted(set(pairs))
 
 
 def find_truncated_value_pairs(counter: Counter[str]) -> list[tuple[str, str]]:
@@ -135,7 +274,12 @@ def find_truncated_value_pairs(counter: Counter[str]) -> list[tuple[str, str]]:
                 continue
             if is_normal_qualifier_suffix(suffix):
                 continue
-            if counter[long_value] <= counter[short_value]:
+            is_single_char_completion = is_single_char_entity_completion(short_norm, long_norm)
+            is_institution_completion = is_institution_suffix_completion(short_norm, long_norm)
+            if counter[long_value] <= counter[short_value] and not (
+                is_single_char_completion and counter[long_value] == counter[short_value]
+                or is_institution_completion
+            ):
                 continue
             candidate_pairs.append((short_value, long_value))
 
@@ -153,4 +297,49 @@ def find_truncated_value_pairs(counter: Counter[str]) -> list[tuple[str, str]]:
         if len(short_values_by_long.get(long_value, set())) != 1:
             continue
         one_to_one_pairs.append((short_value, long_value))
-    return one_to_one_pairs
+
+    # Allow a narrow fallback for final-character truncations like
+    # "유치" -> "유치원" and "초등학" -> "초등학교" even when a short
+    # prefix also matches another non-entity completion candidate.
+    fallback_pairs: list[tuple[str, str]] = []
+    for short_value, long_value in unique_pairs:
+        short_norm = normalized_text(short_value)
+        long_norm = normalized_text(long_value)
+        if not is_single_char_entity_completion(short_norm, long_norm):
+            continue
+
+        eligible_longs = {
+            candidate
+            for candidate in long_values_by_short.get(short_value, set())
+            if is_single_char_entity_completion(
+                short_norm,
+                normalized_text(candidate),
+            )
+        }
+        if eligible_longs != {long_value}:
+            continue
+
+        eligible_shorts = {
+            candidate
+            for candidate in short_values_by_long.get(long_value, set())
+            if is_single_char_entity_completion(
+                normalized_text(candidate),
+                long_norm,
+            )
+        }
+        if eligible_shorts != {short_value}:
+            continue
+
+        fallback_pairs.append((short_value, long_value))
+
+    # Also allow a narrow set of institution-type truncations where the missing
+    # suffix is semantically fixed, such as "초등" -> "초등학교".
+    institution_pairs: list[tuple[str, str]] = []
+    for short_value, long_value in unique_pairs:
+        if is_institution_suffix_completion(
+            normalized_text(short_value),
+            normalized_text(long_value),
+        ):
+            institution_pairs.append((short_value, long_value))
+
+    return sorted(set(one_to_one_pairs + fallback_pairs + institution_pairs))

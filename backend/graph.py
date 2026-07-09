@@ -35,6 +35,7 @@ def build_graph(
     graph.add_node("validate", validate_quality)
     graph.add_node("categorical_semantic_validate", agents["categorical_semantic_validator"].run)
     graph.add_node("propose_repairs", propose_repairs)
+    graph.add_node("final_finding_verify", agents["final_finding_verifier"].run)
     graph.add_node("verify_results", verify_results)
 
     graph.add_edge(START, "load_reference_data")
@@ -45,6 +46,7 @@ def build_graph(
     graph.add_edge("semantic_profile", "validate")
     graph.add_edge("validate", "categorical_semantic_validate")
     graph.add_edge("categorical_semantic_validate", "propose_repairs")
-    graph.add_edge("propose_repairs", "verify_results")
+    graph.add_edge("propose_repairs", "final_finding_verify")
+    graph.add_edge("final_finding_verify", "verify_results")
     graph.add_edge("verify_results", END)
     return graph.compile()

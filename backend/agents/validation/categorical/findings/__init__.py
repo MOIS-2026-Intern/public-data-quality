@@ -1,3 +1,4 @@
+from .address_detail import run_llm_address_detail_validation
 from .llm import apply_llm_categorical_findings
 from .local import LocalCategoricalFindingCounts, apply_local_categorical_findings
 from .row_context import run_llm_row_context_validation
@@ -18,6 +19,7 @@ __all__ = [
     "finding_key",
     "looks_row_context_signal_column",
     "row_context_signal_score",
+    "run_llm_address_detail_validation",
     "run_llm_row_context_validation",
     "value_rows",
 ]

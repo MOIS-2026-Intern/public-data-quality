@@ -3,6 +3,13 @@ from __future__ import annotations
 import re
 from collections import Counter
 
+try:
+    from .....core.validation.free_text import is_free_format_column as _core_is_free_format_column
+except ImportError:  # pragma: no cover
+    if (__package__ or "").split(".", 1)[0] != "agents":
+        raise
+    from core.validation.free_text import is_free_format_column as _core_is_free_format_column
+
 DATE_COLUMN_TOKENS = (
     "일자",
     "일시",
@@ -37,12 +44,30 @@ def looks_route_name_column(column) -> bool:
     )
 
 
+def looks_address_text_column(column) -> bool:
+    name = f"{column.raw_name} {column.normalized_name}"
+    return "address" in column.semantic_tags or any(token in name for token in ("주소", "소재지"))
+
+
 def looks_institution_category_column(column) -> bool:
     name = f"{column.raw_name} {column.normalized_name}"
     return any(
         token in name
         for token in ("시설구분", "기관구분", "시설유형", "기관유형", "분류", "구분", "유형")
     )
+
+
+def _looks_institution_classification_column(column) -> bool:
+    name = f"{column.raw_name} {column.normalized_name}"
+    institution_context = any(
+        token in name
+        for token in ("기관", "시설", "학교", "유치원", "어린이집", "보육", "교육", "수요처")
+    )
+    classification_context = any(
+        token in name
+        for token in ("구분", "유형", "분류", "종류", "급", "단계", "대상")
+    )
+    return institution_context and classification_context
 
 
 def looks_name_column(column) -> bool:
@@ -54,22 +79,27 @@ def looks_name_column(column) -> bool:
     )
 
 
-def looks_free_text_column(column) -> bool:
+def looks_business_name_column(column) -> bool:
     name = f"{column.raw_name} {column.normalized_name}"
-    free_text_tokens = (
-        "내용",
-        "설명",
-        "사유",
-        "비고",
-        "메모",
-        "참고",
-        "특이사항",
-        "조치",
-        "민원",
-        "안내",
-        "비고사항",
+    return any(
+        token in name
+        for token in (
+            "업소명",
+            "상호",
+            "상호명",
+            "업체명",
+            "사업장명",
+            "가맹점명",
+            "매장명",
+            "상점명",
+            "음식점명",
+            "식당명",
+        )
     )
-    return any(token in name for token in free_text_tokens)
+
+
+def looks_free_text_column(column) -> bool:
+    return _core_is_free_format_column(column)
 
 
 def _is_text_like_column(column) -> bool:
@@ -139,6 +169,48 @@ def allows_context_free_replacement_detection(column, counter: Counter[str]) -> 
     return _compact_value_set(counter) or any(token in name for token in structured_tokens)
 
 
+def allows_institution_suffix_truncation(column) -> bool:
+    name = f"{column.raw_name} {column.normalized_name}"
+    excluded_tags = {
+        "numeric",
+        "count",
+        "quantity",
+        "amount",
+        "rate",
+        "width",
+        "identifier",
+        "code",
+        "date",
+        "boolean",
+        "phone",
+        "geo_lat",
+        "geo_lon",
+        "coordinate_pair",
+    }
+    if excluded_tags.intersection(set(column.semantic_tags)):
+        return False
+    if column.inferred_primitive_type in {"numeric", "date", "empty"}:
+        return False
+    if looks_free_text_column(column):
+        return False
+    if looks_address_text_column(column):
+        return False
+    if looks_business_name_column(column):
+        return False
+    if looks_route_name_column(column):
+        return False
+    if any(
+        token in name
+        for token in ("우편번호", "우편", "번호", "코드", "일자", "일시", "날짜", "수용인원")
+    ):
+        return False
+    return (
+        "name" in column.semantic_tags
+        or looks_name_column(column)
+        or _looks_institution_classification_column(column)
+    )
+
+
 def is_public_private_category_value(value: str) -> bool:
     text = re.sub(r"\s+", "", str(value or "").strip())
     return bool(re.fullmatch(r"(공공|민간)(기관|시설)?", text))
@@ -197,6 +269,12 @@ def allows_local_prefix_truncation(column) -> bool:
         return False
     if column.inferred_primitive_type in {"numeric", "date", "empty"}:
         return False
+    if looks_free_text_column(column):
+        return False
+    if looks_address_text_column(column):
+        return False
+    if looks_business_name_column(column):
+        return False
     if looks_route_name_column(column):
         return False
     if any(
@@ -228,6 +306,8 @@ def allows_local_surface_normalization(column) -> bool:
     if excluded_tags.intersection(set(column.semantic_tags)):
         return False
     if column.inferred_primitive_type in {"numeric", "date", "empty"}:
+        return False
+    if looks_free_text_column(column):
         return False
     if looks_route_name_column(column):
         return False

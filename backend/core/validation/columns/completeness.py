@@ -1,14 +1,12 @@
 from __future__ import annotations
 
 from ...schema.models import ValidationFinding
+from ..free_text import looks_free_text_column
 from .context import ColumnRuleContext
 from .helpers import (
-    address_context_columns,
     duplicate_value_row_indexes,
-    incomplete_detail_address_row_indexes,
     is_likely_required,
     looks_address_column,
-    looks_detail_address_column,
     matching_row_indexes,
     truncated_address_row_indexes,
 )
@@ -155,41 +153,6 @@ def find_special_character_issues(context: ColumnRuleContext) -> list[Validation
     ]
 
 
-def find_incomplete_detail_address(context: ColumnRuleContext) -> list[ValidationFinding]:
-    column = context.column
-    if not looks_detail_address_column(column):
-        return []
-
-    related_columns = address_context_columns(context.rows, column.raw_name)
-    row_indexes = incomplete_detail_address_row_indexes(
-        context.rows,
-        column.raw_name,
-        related_columns,
-    )
-    if not row_indexes:
-        return []
-
-    return [
-        build_finding(
-            column_name=column.raw_name,
-            severity="warning",
-            category_group="domain_validity",
-            criterion_name="categorical_semantic_domain",
-            rule_id="categorical_value_truncated",
-            message=(
-                "상세주소 값이 한두 글자 조각으로만 입력되어 문맥상 잘렸거나 "
-                "불완전한 주소일 수 있습니다."
-            ),
-            row_indexes=row_indexes,
-            related_columns=[column.raw_name, *related_columns],
-            evidence=[
-                f"incomplete_detail_address_rows:{len(row_indexes)}",
-                "detector:incomplete_detail_address",
-            ],
-        )
-    ]
-
-
 def find_truncated_address(context: ColumnRuleContext) -> list[ValidationFinding]:
     column = context.column
     if not looks_address_column(column):
@@ -223,6 +186,8 @@ def find_truncated_address(context: ColumnRuleContext) -> list[ValidationFinding
 def find_missing_assigned_rules(context: ColumnRuleContext) -> list[ValidationFinding]:
     column = context.column
     if column.assigned_rules:
+        return []
+    if looks_free_text_column(column):
         return []
 
     return [

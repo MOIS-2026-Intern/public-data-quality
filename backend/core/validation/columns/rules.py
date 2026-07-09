@@ -4,7 +4,6 @@ from ...schema.models import ColumnProfile, DatasetMeta, ValidationFinding
 from .completeness import (
     find_duplicate_identifiers,
     find_garbled_text,
-    find_incomplete_detail_address,
     find_missing_assigned_rules,
     find_required_nulls,
     find_special_character_issues,
@@ -30,7 +29,6 @@ BASE_RULE_CHECKS: tuple[ColumnRuleCheck, ...] = (
     find_garbled_text,
     find_whitespace_issues,
     find_special_character_issues,
-    find_incomplete_detail_address,
     find_truncated_address,
 )
 

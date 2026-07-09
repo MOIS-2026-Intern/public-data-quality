@@ -114,6 +114,7 @@ def _write_findings_sheet(sheet, result: dict[str, Any], validation_rows: list[d
         "검증 기준",
         "규칙",
         "오류 메시지",
+        "LLM 최종 검증",
         "관련 컬럼",
         "근거",
     ]
@@ -142,6 +143,7 @@ def _write_findings_sheet(sheet, result: dict[str, Any], validation_rows: list[d
                     finding.get("criterion_name", ""),
                     finding.get("rule_id", ""),
                     finding.get("message", ""),
+                    finding.get("llm_final_verification", ""),
                     ", ".join(finding.get("related_columns") or []),
                     " | ".join(finding.get("evidence") or []),
                 ]
@@ -223,6 +225,9 @@ def _finding_message(finding: dict[str, Any]) -> str:
         str(finding.get("criterion_name") or "").strip(),
         str(finding.get("message") or "").strip(),
     ]
+    llm_final_verification = str(finding.get("llm_final_verification") or "").strip()
+    if llm_final_verification:
+        parts.append(f"LLM 최종 검증: {llm_final_verification}")
     rule_id = str(finding.get("rule_id") or "").strip()
     message = " / ".join(part for part in parts if part)
     return f"{message} ({rule_id})" if rule_id else message

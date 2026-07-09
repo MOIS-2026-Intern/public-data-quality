@@ -18,6 +18,9 @@ from ..config.constants import (
 from ..schema.models import DatasetMeta
 
 
+TEXT_DATASET_ENCODINGS = ("utf-8-sig", "utf-8", "cp949", "euc-kr", "utf-16")
+
+
 def _stringify_cell(value: object) -> str:
     if value is None:
         return ""
@@ -26,6 +29,27 @@ def _stringify_cell(value: object) -> str:
 
 def _clean_headers(values: list[object]) -> list[str]:
     return [_stringify_cell(value) for value in values]
+
+
+def _detect_text_encoding(path: Path) -> str:
+    sample = path.read_bytes()[:65536]
+    if sample.startswith(b"\xef\xbb\xbf"):
+        return "utf-8-sig"
+    if sample.startswith((b"\xff\xfe", b"\xfe\xff")):
+        return "utf-16"
+
+    for encoding in TEXT_DATASET_ENCODINGS:
+        try:
+            sample.decode(encoding)
+        except UnicodeDecodeError:
+            continue
+        return encoding
+
+    raise ValueError("텍스트 데이터 파일 인코딩을 판별할 수 없습니다. UTF-8 또는 CP949/EUC-KR CSV로 저장해 다시 시도하세요.")
+
+
+def _open_text_dataset(path: Path):
+    return path.open("r", encoding=_detect_text_encoding(path), newline="")
 
 
 def _csv_dialect(handle, fallback_delimiter: str = ","):
@@ -40,14 +64,14 @@ def _csv_dialect(handle, fallback_delimiter: str = ","):
 
 
 def _iter_delimited_rows(path: Path, fallback_delimiter: str = ",") -> Iterator[dict[str, str]]:
-    with path.open("r", encoding="utf-8-sig", newline="") as handle:
+    with _open_text_dataset(path) as handle:
         reader = csv.DictReader(handle, dialect=_csv_dialect(handle, fallback_delimiter))
         for row in reader:
             yield {str(key): (value or "") for key, value in row.items() if key is not None}
 
 
 def _read_delimited_headers(path: Path, fallback_delimiter: str = ",") -> list[str]:
-    with path.open("r", encoding="utf-8-sig", newline="") as handle:
+    with _open_text_dataset(path) as handle:
         reader = csv.reader(handle, dialect=_csv_dialect(handle, fallback_delimiter))
         return [header.strip() for header in next(reader, []) if str(header).strip()]
 
@@ -358,7 +382,7 @@ def load_dataset_meta(
     dataset_name: str | None = None,
 ) -> DatasetMeta:
     path = Path(csv_path)
-    with path.open("r", encoding="utf-8-sig", newline="") as handle:
+    with _open_text_dataset(path) as handle:
         reader = csv.DictReader(handle)
         for row in reader:
             row_id = (row.get("목록키") or "").strip()

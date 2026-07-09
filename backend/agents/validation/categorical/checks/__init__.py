@@ -1,6 +1,7 @@
 from .column import (
     allows_compact_domain_variant_detection,
     allows_context_free_replacement_detection,
+    allows_institution_suffix_truncation,
     allows_local_prefix_truncation,
     allows_local_surface_normalization,
     is_public_private_category_value,
@@ -32,18 +33,25 @@ from .text import (
     looks_context_free_replacement_value,
     looks_malformed_text_value,
     looks_non_name_value,
+    looks_url_like_value,
     normalized_text,
 )
-from .truncation import find_truncated_value_pairs, is_normal_qualifier_suffix
+from .truncation import (
+    find_institution_suffix_completion_pairs,
+    find_truncated_value_pairs,
+    is_normal_qualifier_suffix,
+)
 
 __all__ = [
     "allows_local_prefix_truncation",
     "allows_local_surface_normalization",
     "allows_compact_domain_variant_detection",
     "allows_context_free_replacement_detection",
+    "allows_institution_suffix_truncation",
     "canonical_normalization_key",
     "clean_reason_text",
     "find_compact_domain_variant_pairs",
+    "find_institution_suffix_completion_pairs",
     "find_surface_normalization_pairs",
     "find_truncated_value_pairs",
     "has_mixed_surface_forms",
@@ -67,6 +75,7 @@ __all__ = [
     "looks_name_column",
     "looks_non_name_value",
     "looks_route_name_column",
+    "looks_url_like_value",
     "normalized_text",
     "visible_text_key",
 ]

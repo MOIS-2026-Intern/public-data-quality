@@ -1,6 +1,6 @@
 :root {
   font-family: "Pretendard Variable", Pretendard, "Noto Sans KR", "Apple SD Gothic Neo", sans-serif;
-  font-size: 14px;
+  font-size: 15px;
   color: #10221b;
   background: #ffffff;
   line-height: 1.45;
@@ -154,13 +154,13 @@ textarea {
   justify-content: flex-end;
   gap: 8px;
   color: #64756f;
-  font-size: 0.8rem;
+  font-size: 0.82rem;
 }
 
 .progress-meta strong {
   flex: 0 0 auto;
   color: #64756f;
-  font-size: 0.8rem;
+  font-size: 0.82rem;
   font-weight: 600;
 }
 
@@ -242,6 +242,8 @@ textarea {
 .control-panel label {
   display: grid;
   gap: 5px;
+  color: #51625c;
+  font-size: 0.86rem;
   font-weight: 600;
 }
 
@@ -261,6 +263,9 @@ textarea {
   border-radius: 8px;
   padding: 8px 10px;
   background: #f6f8f7;
+  color: #10221b;
+  font-size: 1rem;
+  font-weight: 400;
 }
 
 input:focus,
@@ -290,9 +295,22 @@ textarea {
   font-weight: 800;
 }
 
+.control-label-title {
+  color: #51625c;
+  font-size: 0.86rem;
+  font-weight: 600;
+  line-height: 1.25;
+}
+
+.control-label-title.is-primary {
+  color: #11284d;
+  font-size: 0.92rem;
+  font-weight: 800;
+}
+
 .field-hint {
   color: #66756f;
-  font-size: 0.8rem;
+  font-size: 0.82rem;
   line-height: 1.4;
 }
 
@@ -431,21 +449,18 @@ textarea {
 }
 
 .selected-files {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
+  display: grid;
+  gap: 3px;
 }
 
 .selected-file {
   max-width: 100%;
   overflow: hidden;
-  padding: 4px 7px;
-  border-radius: 8px;
-  background: #f4f7f5;
+  padding: 0;
   color: #4f615a;
-  font-size: 0.78rem;
+  font-size: 0.82rem;
   font-weight: 500;
-  line-height: 1.2;
+  line-height: 1.35;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -454,6 +469,11 @@ textarea {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 8px 12px;
+}
+
+.batch-result-shell {
+  display: grid;
+  gap: 14px;
 }
 
 .summary-card {
@@ -473,10 +493,10 @@ textarea {
 }
 
 .result-tabs {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin: 12px 0 10px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 10px;
+  margin: 0 0 6px;
 }
 
 .report-actions {
@@ -500,23 +520,58 @@ textarea {
 }
 
 .result-tab {
-  max-width: 220px;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-width: 0;
   overflow: hidden;
   border: none;
-  border-radius: 8px;
-  padding: 6px 9px;
-  background: #f4f7fa;
-  color: #11284d;
+  border-radius: 0;
+  padding: 0 0 8px;
+  background: transparent;
+  color: #66756f;
   cursor: pointer;
-  font-size: 0.86rem;
-  font-weight: 700;
+  font-size: 0.88rem;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.result-tab.is-active {
+  color: #11284d;
+}
+
+.result-tab.is-active::after {
+  content: "";
+  position: absolute;
+  right: 0;
+  bottom: -1px;
+  left: 0;
+  height: 2px;
+  background: #11284d;
+}
+
+.result-tab.is-error {
+  color: #9b2c2c;
+}
+
+.result-tab.is-error.is-active::after {
+  background: #9b2c2c;
+}
+
+.result-tab-name {
+  min-width: 0;
+  overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.result-tab.is-active {
-  background: #11284d;
-  color: #ffffff;
+.result-tab-status {
+  flex: 0 0 auto;
+  color: inherit;
+  font-size: 0.78rem;
+  font-weight: 700;
 }
 
 .failed-files {
@@ -545,7 +600,7 @@ textarea {
   align-items: center;
   border-radius: 999px;
   padding: 4px 8px;
-  font-size: 0.8rem;
+  font-size: 0.82rem;
   font-weight: 700;
   white-space: nowrap;
 }
@@ -577,6 +632,71 @@ textarea {
   white-space: nowrap;
 }
 
+.findings-tabbed {
+  display: grid;
+  gap: 10px;
+}
+
+.finding-tabs {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.finding-tab {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-width: 0;
+  overflow: hidden;
+  border: none;
+  border-radius: 0;
+  padding: 0 0 8px;
+  background: transparent;
+  color: #66756f;
+  cursor: pointer;
+  font-size: 0.88rem;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.finding-tab.is-active {
+  color: #11284d;
+}
+
+.finding-tab.is-active::after {
+  content: "";
+  position: absolute;
+  right: 0;
+  bottom: -1px;
+  left: 0;
+  height: 2px;
+  background: #11284d;
+}
+
+.finding-tab strong {
+  flex: 0 0 auto;
+  color: inherit;
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.finding-section-table-wrap {
+  margin-top: 10px;
+  max-width: 100%;
+}
+
+.finding-empty-cell {
+  color: #66756f;
+  text-align: center;
+}
+
+.finding-cell-nowrap {
+  white-space: nowrap;
+}
+
 .preview-layout {
   display: grid;
   grid-template-columns: minmax(0, 3fr) minmax(280px, 0.72fr);
@@ -591,6 +711,15 @@ textarea {
 .preview-table-wrap {
   overflow: auto;
   max-height: 580px;
+}
+
+.preview-sample-note {
+  position: sticky;
+  left: 0;
+  margin: 0 0 8px;
+  color: #66756f;
+  font-size: 0.82rem;
+  line-height: 1.4;
 }
 
 .preview-table {
@@ -710,7 +839,7 @@ textarea {
 
 .cell-issue-tooltip-item strong {
   color: #991b1b;
-  font-size: 0.78rem;
+  font-size: 0.8rem;
 }
 
 .preview-table tbody tr:hover td:not(.is-column-hovered) {
@@ -745,7 +874,7 @@ textarea {
 }
 
 .hover-detail-key {
-  font-size: 0.8rem;
+  font-size: 0.82rem;
   color: #697872;
 }
 
@@ -786,7 +915,7 @@ textarea {
 
 .column-donut-center span {
   color: #697872;
-  font-size: 0.68rem;
+  font-size: 0.72rem;
 }
 
 .column-donut-legend {
@@ -800,7 +929,7 @@ textarea {
   gap: 7px;
   align-items: center;
   color: #4f615a;
-  font-size: 0.78rem;
+  font-size: 0.8rem;
 }
 
 .column-donut-swatch {
@@ -858,6 +987,7 @@ td {
   .summary-grid {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
+
 }
 
 @media (max-width: 960px) {

@@ -33,6 +33,37 @@ TAG_RULE_MAP = {
     "quantity": ["quantity_domain", "calculation_formula"],
     "rate": ["rate_domain", "calculation_formula"],
     "code": ["code_domain", "reference_relation"],
+    "free_text": [],
+}
+
+FREE_TEXT_COLUMN_NAME_TOKENS = {
+    "기타",
+    "기타사항",
+    "기타내용",
+    "기타설명",
+    "비고",
+    "비고사항",
+    "메모",
+    "참고",
+    "참고사항",
+    "내용",
+    "설명",
+    "상세내용",
+    "사유",
+    "특이사항",
+    "안내",
+    "조치",
+    "민원",
+    "서비스URL",
+    "서비스url",
+    "서비스링크",
+    "사이트",
+    "홈페이지",
+    "URL",
+    "url",
+    "링크",
+    "대표문의",
+    "문의처",
 }
 
 VALIDATION_CRITERIA = {
@@ -142,3 +173,5 @@ CATEGORICAL_LLM_MIN_DISTINCT = 2
 CATEGORICAL_LLM_MAX_DISTINCT = 30
 CATEGORICAL_LLM_MIN_REPEAT_COUNT = 2
 CATEGORICAL_LLM_CONFIDENCE_THRESHOLD = 0.9
+ADDRESS_DETAIL_LLM_CONFIDENCE_THRESHOLD = 0.95
+ADDRESS_DETAIL_LLM_MAX_CANDIDATES = 40

@@ -15,6 +15,13 @@ ROW_CONTEXT_SYSTEM_PROMPT = (
     "Return a single JSON object only. No markdown, no explanation, no code fences."
 )
 
+ADDRESS_DETAIL_SYSTEM_PROMPT = (
+    "You are a very conservative Korean address-detail completeness validator. "
+    "Only report cases that are almost certainly incomplete from the provided row context. "
+    "Prefer no issue over a false positive. "
+    "Return a single JSON object only. No markdown, no explanation, no code fences."
+)
+
 
 def categorical_value_validation_prompt(
     *,
@@ -23,6 +30,7 @@ def categorical_value_validation_prompt(
     column_name: str,
     standard_candidate: str | None,
     semantic_tags: list[str],
+    format_kind: str | None,
     values: list[dict[str, Any]],
 ) -> str:
     return f"""
@@ -47,6 +55,8 @@ Decision policy:
 - Do not infer an error from being shorter, longer, more specific, less specific, or formatted differently unless the value is clearly damaged.
 - If the value can reasonably be a valid standalone category/name/address/route/branch/facility, do not report it as an issue.
 - If evidence is suspicious but not decisive, use needs_manual_review with confidence 0.50-0.89. Do not place ambiguous items in issue lists.
+- If format_kind is "free_format" or semantic_tags contains "free_text", only use out_of_domain_values for values that clearly do not belong to the column meaning. Do not use normalizations, invalid_format_values, inconsistent_format_groups, or needs_manual_review for free-format columns.
+- Do not report missing common business-name suffixes as truncation. Values such as names without 식당, 세탁소, 집, 관, 당, 국밥, 국수집, 센터, or similar suffixes can be valid standalone business names.
 
 Never report these as issues:
 - Normal category distinctions: "공공", "민간", "공공기관", "민간기관", "공공시설", "민간시설".
@@ -58,14 +68,13 @@ Never report these as issues:
 Issue requirements:
 - normalizations: only when source and target mean exactly the same thing, source is visibly wrong, and the dataset shows a dominant canonical spelling. Do not normalize merely for style.
 - out_of_domain_values: only when the value clearly belongs to a different taxonomy, not merely a different valid value.
-- invalid_format_values: only for explicit format/domain violations, corrupted text, broken punctuation, invalid boolean/date formats, or visibly truncated free text.
+- invalid_format_values: only for explicit format/domain violations, corrupted text, broken punctuation, or invalid boolean/date formats. Do not use issue_type "truncated_text" for categorical/name columns.
 - inconsistent_format_groups: only for strict format patterns such as date formats, not for ordinary categories.
 
 Examples to report:
 - Boolean column mostly has Y/N but contains "I": invalid_format_values issue_type "boolean_invalid".
 - Date column mixes "2024-01-01" and "20240102": inconsistent_format_groups.
 - Text contains broken suffix or stray punctuation like "불법주정차빈??": invalid_format_values issue_type "malformed_text".
-- Free text is visibly cut off, e.g. "야간 조" where other values show complete phrase "야간 조명 부족": invalid_format_values issue_type "truncated_text" or needs_manual_review.
 
 Output constraints:
 - Use Korean in reasons.
@@ -82,6 +91,7 @@ Column:
 - name: {column_name}
 - standard_candidate: {standard_candidate or ""}
 - semantic_tags: {semantic_tags}
+- format_kind: {format_kind or "fixed_format"}
 - distinct_values_with_counts: {json.dumps(values, ensure_ascii=False)}
 """
 
@@ -148,4 +158,61 @@ Columns:
 
 Rows:
 {json.dumps(rows, ensure_ascii=False)}
+"""
+
+
+def address_detail_validation_prompt(
+    *,
+    dataset_name: str,
+    provider_name: str,
+    column_name: str,
+    related_columns: list[str],
+    candidates: list[dict[str, Any]],
+) -> str:
+    return f"""
+You validate candidate rows where a Korean detail-address column has a very short value.
+Your goal is NOT to find every suspicious value. Your goal is to report only near-certain truncation/incompleteness.
+Assume each candidate value is valid unless the row context makes incompleteness obvious.
+False positives are more harmful than missed issues.
+
+Return strict JSON only with keys:
+- address_detail_issues: list[{{"row_index": int, "column_name": string, "related_columns": list[string], "message": string, "reason": string, "confidence": float}}]
+- overall_confidence: float
+
+Decision policy:
+- Use only the provided row values and column names. Do not use external lookup tables or official registries.
+- Do not report placeholders or no-detail markers such as "-", "없음", "해당없음", "미상", "N/A".
+- Do not report valid standalone detail-address expressions such as "지하", "지상", "정문", "후문", "입구", "앞", "뒤", "본관", "별관", "101동", "2층", "B1".
+- Do not report a short Korean value merely because it is short, rare, or unusual.
+- Do not report if the value can reasonably be a building wing, entrance, local place name, abbreviated facility zone, or intentionally minimal detail.
+- Report only when the candidate value is visibly a broken fragment and the surrounding row context makes that interpretation almost certain.
+- If a human reviewer would still need to inspect the source file or external information, do not report it.
+
+Issue requirements:
+- address_detail_issues confidence must be >= 0.95.
+- column_name must exactly be "{column_name}".
+- related_columns must include "{column_name}" and any directly relevant raw column names from related_columns.
+- Use Korean in message and reason.
+- Set overall_confidence below 0.70 when no near-certain issue exists.
+
+Reportable examples:
+- A detail-address value is a single Korean syllable that is visibly not a complete location/detail expression, and the base address/facility context indicates an address detail should be complete.
+- A value ends with an opened parenthesis/bracket or clearly broken word fragment inside the detail address.
+
+Non-reportable examples:
+- "-", "－", "–", "—", "−"
+- "지하", "지상", "앞", "뒤", "정문", "후문", "입구"
+- "1층", "2층", "B1", "101동", "A동"
+- Facility/detail specificity differences that are plausible standalone details.
+
+Dataset:
+- name: {dataset_name}
+- provider: {provider_name}
+
+Detail address column:
+- name: {column_name}
+- related_columns: {json.dumps(related_columns, ensure_ascii=False)}
+
+Candidate rows:
+{json.dumps(candidates, ensure_ascii=False)}
 """

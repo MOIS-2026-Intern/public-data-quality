@@ -27,6 +27,7 @@ class ColumnProfile(BaseModel):
     unit: str | None = None
     tokens: list[str] = Field(default_factory=list)
     semantic_tags: list[str] = Field(default_factory=list)
+    format_kind: Literal["fixed_format", "free_format"] | None = None
     standard_candidates: list[str] = Field(default_factory=list, exclude=True)
     standard_match_type: str | None = Field(default=None, exclude=True)
     routing_confidence: float = 0.0
@@ -66,6 +67,7 @@ class ValidationFinding(BaseModel):
     criterion_description: str = ""
     rule_id: str
     message: str
+    llm_final_verification: str = ""
     row_indexes: list[int] = Field(default_factory=list)
     related_columns: list[str] = Field(default_factory=list)
     evidence: list[str] = Field(default_factory=list)

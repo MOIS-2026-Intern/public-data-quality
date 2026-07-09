@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { FindingTypeBadge, SummaryCard, displayValue } from "./components/common";
+import { SummaryCard, displayValue } from "./components/common";
 import { PreviewPanel } from "./components/PreviewPanel";
 import {
   formatCriterionName,
@@ -19,6 +19,25 @@ function splitLineValues(value) {
     .split(/\r?\n/)
     .map((item) => item.trim())
     .filter(Boolean);
+}
+
+function batchSummary(items) {
+  const successfulResults = items.filter((item) => item.ok && item.result).map((item) => item.result);
+  return {
+    dataset_count: items.length,
+    success_count: successfulResults.length,
+    failed_count: items.filter((item) => !item.ok).length,
+    row_count: successfulResults.reduce((sum, result) => sum + Number(result.summary?.row_count || 0), 0),
+    finding_count: successfulResults.reduce((sum, result) => sum + Number(result.summary?.finding_count || 0), 0),
+    issue_finding_count: successfulResults.reduce(
+      (sum, result) => sum + Number(result.summary?.issue_finding_count || 0),
+      0,
+    ),
+    manual_review_finding_count: successfulResults.reduce(
+      (sum, result) => sum + Number(result.summary?.manual_review_finding_count || 0),
+      0,
+    ),
+  };
 }
 
 function ControlPanel({
@@ -119,7 +138,7 @@ function ControlPanel({
           {sourceType === "url" ? (
             <>
               <label>
-                입력 URL 목록
+                <span className="control-label-title is-primary">입력 URL 목록</span>
                 <textarea
                   rows={5}
                   value={dataUrl}
@@ -152,9 +171,6 @@ function ControlPanel({
                     ))}
                   </div>
                 ) : null}
-                <div className="field-hint">
-                  <code>txt</code>, <code>xlsx</code>, <code>xls</code> 파일에서 http/https URL을 추출합니다.
-                </div>
               </div>
             </>
           ) : null}
@@ -163,7 +179,7 @@ function ControlPanel({
             <>
               <div className="api-field-stack">
                 <label>
-                  공공데이터 API URL
+                  <span className="control-label-title is-primary">공공데이터 API URL</span>
                   <input
                     type="url"
                     value={apiUrl}
@@ -173,7 +189,7 @@ function ControlPanel({
                   />
                 </label>
                 <label>
-                  Service Key
+                  <span className="control-label-title is-secondary">Service Key</span>
                   <input
                     type="password"
                     value={apiServiceKey}
@@ -186,7 +202,7 @@ function ControlPanel({
               </div>
               <div className="api-grid-row">
                 <label>
-                  pageNo
+                  <span className="control-label-title is-secondary">pageNo</span>
                   <input
                     value={apiPageNo}
                     onChange={(event) => setApiPageNo(event.target.value)}
@@ -195,7 +211,7 @@ function ControlPanel({
                   />
                 </label>
                 <label>
-                  numOfRows
+                  <span className="control-label-title is-secondary">numOfRows</span>
                   <input
                     value={apiNumOfRows}
                     onChange={(event) => setApiNumOfRows(event.target.value)}
@@ -206,14 +222,14 @@ function ControlPanel({
               </div>
               <div className="api-grid-row">
                 <label>
-                  응답 형식
+                  <span className="control-label-title is-secondary">응답 형식</span>
                   <select value={apiResponseType} onChange={(event) => setApiResponseType(event.target.value)}>
                     <option value="json">JSON</option>
                     <option value="xml">XML</option>
                   </select>
                 </label>
                 <label>
-                  형식 파라미터
+                  <span className="control-label-title is-secondary">형식 파라미터</span>
                   <select value={apiResponseTypeParam} onChange={(event) => setApiResponseTypeParam(event.target.value)}>
                     <option value="_type">_type</option>
                     <option value="type">type</option>
@@ -223,7 +239,7 @@ function ControlPanel({
                 </label>
               </div>
               <label>
-                추가 파라미터
+                <span className="control-label-title is-secondary">추가 파라미터</span>
                 <textarea
                   rows={4}
                   value={apiParams}
@@ -323,77 +339,116 @@ function SummarySection({ summary }) {
   );
 }
 
-function BatchSummarySection({ summary }) {
-  return (
-    <div className="summary-grid">
-      <SummaryCard label="파일 수" value={summary.dataset_count ?? 0} />
-      <SummaryCard label="성공" value={summary.success_count ?? 0} />
-      <SummaryCard label="실패" value={summary.failed_count ?? 0} />
-      <SummaryCard label="총 행 수" value={summary.row_count ?? 0} />
-      <SummaryCard label="검증 결과" value={summary.finding_count ?? 0} />
-      <SummaryCard label="오류/이상" value={summary.issue_finding_count ?? 0} />
-    </div>
-  );
-}
-
 function expandedFindingRows(findings, previewRows) {
   return (findings || []).flatMap((finding, findingIndex) => {
     const rowIndexes = Array.isArray(finding.row_indexes) && finding.row_indexes.length ? finding.row_indexes : [null];
     return rowIndexes.map((rowIndex, occurrenceIndex) => {
       const sourceRow = rowIndex ? previewRows?.[Number(rowIndex) - 1] : null;
+      const rowValue = rowIndex ? finding.row_values?.[String(rowIndex)] : undefined;
       return {
         finding,
         rowIndex,
         occurrenceIndex,
         findingIndex,
-        currentValue: sourceRow ? sourceRow[finding.column_name] : "",
+        currentValue: rowValue ?? (sourceRow ? sourceRow[finding.column_name] : ""),
       };
     });
   });
 }
 
-function FindingsTable({ findings, previewRows }) {
-  const rows = expandedFindingRows(findings, previewRows);
-
+function FindingRowsTable({ rows, emptyText }) {
   return (
-    <div className="table-wrap">
+    <div className="table-wrap finding-section-table-wrap">
       <table>
         <thead>
           <tr>
             <th>행</th>
-            <th>판정</th>
-            <th>검증영역</th>
-            <th>기준명</th>
-            <th>컬럼</th>
+            <th className="finding-cell-nowrap">검증영역</th>
+            <th className="finding-cell-nowrap">기준명</th>
+            <th className="finding-cell-nowrap">컬럼</th>
             <th>현재 값</th>
             <th>심각도</th>
-            <th>규칙</th>
+            <th className="finding-cell-nowrap">규칙</th>
             <th>메시지</th>
-            <th>관련 컬럼</th>
+            <th>LLM 최종 검증</th>
+            <th className="finding-cell-nowrap">관련 컬럼</th>
           </tr>
         </thead>
         <tbody>
-          {rows.map(({ finding, rowIndex, occurrenceIndex, findingIndex, currentValue }) => (
-            <tr
-              key={`${finding.column_name}-${findingIndex}-${rowIndex || "none"}-${occurrenceIndex}`}
-              className={finding.finding_type === "manual_review" ? "finding-row-manual-review" : "finding-row-issue"}
-            >
-              <td>{displayValue(rowIndex)}</td>
-              <td>
-                <FindingTypeBadge finding={finding} />
+          {rows.length ? (
+            rows.map(({ finding, rowIndex, occurrenceIndex, findingIndex, currentValue }) => (
+              <tr
+                key={`${finding.column_name}-${findingIndex}-${rowIndex || "none"}-${occurrenceIndex}`}
+                className={finding.finding_type === "manual_review" ? "finding-row-manual-review" : "finding-row-issue"}
+              >
+                <td>{displayValue(rowIndex)}</td>
+                <td className="finding-cell-nowrap">{displayValue(finding.category_label)}</td>
+                <td className="finding-cell-nowrap">{displayValue(formatCriterionName(finding.criterion_name))}</td>
+                <td className="finding-cell-nowrap">{displayValue(finding.column_name)}</td>
+                <td>{displayValue(currentValue)}</td>
+                <td>{displayValue(formatSeverity(finding.severity))}</td>
+                <td className="finding-cell-nowrap">{displayValue(formatRuleId(finding.rule_id))}</td>
+                <td>{displayValue(finding.message)}</td>
+                <td>{displayValue(finding.llm_final_verification)}</td>
+                <td className="finding-cell-nowrap">{displayValue(formatRelatedColumns(finding))}</td>
+              </tr>
+            ))
+          ) : (
+            <tr>
+              <td colSpan={10} className="finding-empty-cell">
+                {emptyText}
               </td>
-              <td>{displayValue(finding.category_label)}</td>
-              <td>{displayValue(formatCriterionName(finding.criterion_name))}</td>
-              <td>{displayValue(finding.column_name)}</td>
-              <td>{displayValue(currentValue)}</td>
-              <td>{displayValue(formatSeverity(finding.severity))}</td>
-              <td>{displayValue(formatRuleId(finding.rule_id))}</td>
-              <td>{displayValue(finding.message)}</td>
-              <td>{displayValue(formatRelatedColumns(finding))}</td>
             </tr>
-          ))}
+          )}
         </tbody>
       </table>
+    </div>
+  );
+}
+
+function FindingsTable({ findings, previewRows }) {
+  const [activeFindingType, setActiveFindingType] = useState("issue");
+  const rows = expandedFindingRows(findings, previewRows);
+  const issueRows = rows.filter(({ finding }) => finding.finding_type !== "manual_review");
+  const manualReviewRows = rows.filter(({ finding }) => finding.finding_type === "manual_review");
+  const sections = [
+    {
+      id: "issue",
+      title: "오류/이상 탐지",
+      rows: issueRows,
+      emptyText: "탐지된 오류/이상이 없습니다.",
+    },
+    {
+      id: "manual-review",
+      title: "수동 검토 필요",
+      rows: manualReviewRows,
+      emptyText: "수동 검토 항목이 없습니다.",
+    },
+  ];
+  const activeSection = sections.find((section) => section.id === activeFindingType) || sections[0];
+
+  useEffect(() => {
+    setActiveFindingType("issue");
+  }, [findings]);
+
+  return (
+    <div className="findings-tabbed">
+      <div className="finding-tabs" role="tablist" aria-label="검증 결과 유형">
+        {sections.map((section) => (
+          <button
+            className={`finding-tab ${section.id === activeSection.id ? "is-active" : ""}`}
+            type="button"
+            role="tab"
+            aria-selected={section.id === activeSection.id}
+            key={section.id}
+            onClick={() => setActiveFindingType(section.id)}
+          >
+            <span>{section.title}</span>
+            <strong>{section.rows.length.toLocaleString("ko-KR")}건</strong>
+          </button>
+        ))}
+      </div>
+      <FindingRowsTable rows={activeSection.rows} emptyText={activeSection.emptyText} />
     </div>
   );
 }
@@ -404,16 +459,49 @@ function reportDownloadUrl(result) {
   return `/api/reports/download?path=${encodeURIComponent(reportPath)}`;
 }
 
+function ResultContent({ result }) {
+  if (!result) {
+    return null;
+  }
+
+  return (
+    <>
+      <SummarySection summary={result.summary || {}} />
+      {reportDownloadUrl(result) ? (
+        <div className="report-actions">
+          <a className="download-report-button" href={reportDownloadUrl(result)}>
+            오류 리포트 다운로드
+          </a>
+        </div>
+      ) : null}
+
+      <div className="result-section">
+        <h2>검증 결과</h2>
+        <FindingsTable findings={result.findings} previewRows={result.preview_rows || []} />
+      </div>
+
+      <div className="result-section">
+        <h2>데이터 미리보기</h2>
+        <PreviewPanel
+          headers={result.preview_headers || []}
+          rows={result.preview_rows || []}
+          columns={result.columns || []}
+          findings={result.findings || []}
+          totalRows={result.summary?.row_count}
+        />
+      </div>
+    </>
+  );
+}
+
 function ResultsPanel({ result, loading, progress }) {
-  const [activeResultIndex, setActiveResultIndex] = useState(0);
   const isBatch = Boolean(result?.batch);
-  const successfulItems = isBatch ? (result.results || []).filter((item) => item.ok && item.result) : [];
-  const failedItems = isBatch ? (result.results || []).filter((item) => !item.ok) : [];
-  const activeItem = successfulItems[activeResultIndex] || successfulItems[0] || null;
-  const activeResult = isBatch ? activeItem?.result : result;
+  const batchItems = isBatch ? result.results || [] : [];
+  const [activeBatchIndex, setActiveBatchIndex] = useState(0);
+  const activeBatchItem = batchItems[activeBatchIndex] || batchItems[0] || null;
 
   useEffect(() => {
-    setActiveResultIndex(0);
+    setActiveBatchIndex(0);
   }, [result]);
 
   if (!result) {
@@ -434,68 +522,39 @@ function ResultsPanel({ result, loading, progress }) {
     <section className="results-panel">
       {isBatch ? (
         <>
-          <BatchSummarySection summary={result.summary || {}} />
-          {successfulItems.length ? (
-            <div className="result-tabs" role="tablist" aria-label="분석 결과 파일">
-              {successfulItems.map((item, index) => (
-                <button
-                  className={`result-tab ${index === activeResultIndex ? "is-active" : ""}`}
-                  type="button"
-                  role="tab"
-                  aria-selected={index === activeResultIndex}
-                  key={`${item.filename}-${index}`}
-                  onClick={() => setActiveResultIndex(index)}
-                  title={item.filename}
-                >
-                  {item.filename}
-                </button>
-              ))}
-            </div>
-          ) : null}
-          {failedItems.length ? (
-            <div className="failed-files">
-              {failedItems.map((item, index) => (
-                <div className="failed-file" key={`${item.filename}-${index}`}>
-                  <strong>{item.filename}</strong>
-                  <span>{item.error || "분석 실패"}</span>
+          {batchItems.length ? (
+            <div className="batch-result-shell">
+              <div className="result-tabs" role="tablist" aria-label="분석 결과 데이터셋">
+                {batchItems.map((item, index) => (
+                  <button
+                    className={`result-tab ${index === activeBatchIndex ? "is-active" : ""} ${item.ok ? "" : "is-error"}`}
+                    type="button"
+                    role="tab"
+                    aria-selected={index === activeBatchIndex}
+                    title={item.filename || `데이터 ${index + 1}`}
+                    key={`${item.filename}-${index}`}
+                    onClick={() => setActiveBatchIndex(index)}
+                  >
+                    <span className="result-tab-name">{item.filename || `데이터 ${index + 1}`}</span>
+                    {!item.ok ? <span className="result-tab-status">실패</span> : null}
+                  </button>
+                ))}
+              </div>
+
+              {activeBatchItem?.ok && activeBatchItem.result ? (
+                <ResultContent result={activeBatchItem.result} />
+              ) : (
+                <div className="failed-file">
+                  <strong>{activeBatchItem?.filename || "데이터"}</strong>
+                  <span>{activeBatchItem?.error || "분석 실패"}</span>
                 </div>
-              ))}
+              )}
             </div>
           ) : null}
         </>
-      ) : null}
-
-      {activeResult ? (
-        <>
-          <SummarySection summary={activeResult.summary || {}} />
-          {reportDownloadUrl(activeResult) ? (
-            <div className="report-actions">
-              <a className="download-report-button" href={reportDownloadUrl(activeResult)}>
-                오류 리포트 다운로드
-              </a>
-            </div>
-          ) : null}
-        </>
-      ) : null}
-
-      {activeResult ? (
-        <>
-          <div className="result-section">
-            <h2>검증 결과</h2>
-            <FindingsTable findings={activeResult.findings} previewRows={activeResult.preview_rows || []} />
-          </div>
-
-          <div className="result-section">
-            <h2>데이터 미리보기</h2>
-            <PreviewPanel
-              headers={activeResult.preview_headers || []}
-              rows={activeResult.preview_rows || []}
-              columns={activeResult.columns || []}
-              findings={activeResult.findings || []}
-            />
-          </div>
-        </>
-      ) : null}
+      ) : (
+        <ResultContent result={result} />
+      )}
     </section>
   );
 }
@@ -570,7 +629,7 @@ function App() {
     }
   }
 
-  async function parseAnalyzeStream(response) {
+  async function parseAnalyzeStream(response, onStreamEvent = handleStreamEvent) {
     if (!response.body) {
       const responseText = await response.text();
       return responseText ? JSON.parse(responseText) : null;
@@ -593,7 +652,7 @@ function App() {
       for (const line of lines) {
         if (!line.trim()) continue;
         const event = JSON.parse(line);
-        handleStreamEvent(event);
+        onStreamEvent(event);
         if (event.type === "file_error" && event.error) {
           streamError = event.error;
         }
@@ -605,7 +664,7 @@ function App() {
 
     if (buffer.trim()) {
       const event = JSON.parse(buffer);
-      handleStreamEvent(event);
+      onStreamEvent(event);
       if (event.type === "final") {
         finalPayload = event.payload;
       }
@@ -618,6 +677,110 @@ function App() {
       throw new Error(streamError);
     }
     return finalPayload;
+  }
+
+  function appendCommonAnalyzeFields(body, useLlmForRequest) {
+    body.append("use_llm_agents", String(useLlmForRequest));
+    if (useLlmForRequest && openAiApiKey.trim()) body.append("openai_api_key", openAiApiKey.trim());
+    if (useLlmForRequest && llmFastModel) body.append("llm_fast_model", llmFastModel);
+    if (useLlmForRequest && llmStrongModel) body.append("llm_strong_model", llmStrongModel);
+  }
+
+  function transformSequentialFileEvent(event, fileIndex, totalFiles, filename) {
+    const eventProgress = Math.max(0, Math.min(100, Number(event.progress) || 0));
+    const completedByEvent = ["file_done", "file_error", "final"].includes(event.type)
+      ? 1
+      : Math.min(1, Math.max(0, Number(event.current) || 0));
+    const progress = Math.min(100, Math.round(((fileIndex + eventProgress / 100) / totalFiles) * 100));
+    const current = Math.min(totalFiles, fileIndex + completedByEvent);
+    const message = event.message || "분석 중";
+
+    return {
+      ...event,
+      progress,
+      current,
+      total: totalFiles,
+      filename: event.filename || filename,
+      message: totalFiles > 1 ? `${fileIndex + 1}/${totalFiles} ${message}` : message,
+    };
+  }
+
+  async function fetchAnalyzePayload(body, onStreamEvent = handleStreamEvent) {
+    const response = await fetch("/api/analyze-stream", {
+      method: "POST",
+      body,
+    });
+
+    if (!response.ok) {
+      const responseText = await response.text();
+      let payload = null;
+      try {
+        payload = responseText ? JSON.parse(responseText) : null;
+      } catch {
+        payload = null;
+      }
+      throw new Error(payload?.error || responseText || "분석 요청에 실패했습니다.");
+    }
+
+    const payload = await parseAnalyzeStream(response, onStreamEvent);
+    if (!payload) {
+      throw new Error("분석 응답 형식이 올바르지 않습니다.");
+    }
+    return payload;
+  }
+
+  async function analyzeDatasetFilesSequentially(useLlmForRequest) {
+    const totalFiles = datasetFiles.length;
+    const items = [];
+
+    for (let fileIndex = 0; fileIndex < totalFiles; fileIndex += 1) {
+      const datasetFile = datasetFiles[fileIndex];
+      const body = new FormData();
+      body.append("source_type", "file");
+      body.append("dataset_file", datasetFile);
+      appendCommonAnalyzeFields(body, useLlmForRequest);
+
+      updateProgress({
+        type: "progress",
+        progress: Math.round((fileIndex / totalFiles) * 100),
+        current: fileIndex,
+        total: totalFiles,
+        filename: datasetFile.name,
+        message: totalFiles > 1 ? `${fileIndex + 1}/${totalFiles} 업로드 중` : "업로드 중",
+      });
+
+      try {
+        const payload = await fetchAnalyzePayload(body, (streamEvent) =>
+          handleStreamEvent(transformSequentialFileEvent(streamEvent, fileIndex, totalFiles, datasetFile.name)),
+        );
+        if (payload.batch && Array.isArray(payload.results)) {
+          items.push(...payload.results);
+        } else {
+          items.push({ ok: true, filename: datasetFile.name, result: payload });
+        }
+      } catch (err) {
+        const errorMessage = err.message || "분석 실패";
+        items.push({ ok: false, filename: datasetFile.name, error: errorMessage });
+        handleStreamEvent({
+          type: "file_error",
+          progress: Math.round(((fileIndex + 1) / totalFiles) * 100),
+          current: fileIndex + 1,
+          total: totalFiles,
+          filename: datasetFile.name,
+          message: totalFiles > 1 ? `${fileIndex + 1}/${totalFiles} 실패` : "실패",
+          error: errorMessage,
+        });
+      }
+    }
+
+    if (items.length === 1) {
+      if (items[0].ok && items[0].result) {
+        return items[0].result;
+      }
+      throw new Error(items[0].error || "분석 실패");
+    }
+
+    return { batch: true, summary: batchSummary(items), results: items };
   }
 
   async function handleAnalyze(event) {
@@ -655,11 +818,14 @@ function App() {
         throw new Error("OpenAI API Key를 입력하세요.");
       }
 
+      if (sourceType === "file") {
+        const payload = await analyzeDatasetFilesSequentially(useLlmForRequest);
+        setResult(payload);
+        return;
+      }
+
       const body = new FormData();
       body.append("source_type", sourceType);
-      if (sourceType === "file") {
-        datasetFiles.forEach((datasetFile) => body.append("dataset_file", datasetFile));
-      }
       if (sourceType === "url") {
         dataUrls.forEach((url) => body.append("data_url", url));
         urlListFiles.forEach((urlListFile) => body.append("url_list_file", urlListFile));
@@ -674,31 +840,9 @@ function App() {
         if (apiResponseTypeParam) body.append("api_response_type_param", apiResponseTypeParam);
         if (apiParams.trim()) body.append("api_params", apiParams.trim());
       }
-      body.append("use_llm_agents", String(useLlmForRequest));
-      if (useLlmForRequest && openAiApiKey.trim()) body.append("openai_api_key", openAiApiKey.trim());
-      if (useLlmForRequest && llmFastModel) body.append("llm_fast_model", llmFastModel);
-      if (useLlmForRequest && llmStrongModel) body.append("llm_strong_model", llmStrongModel);
+      appendCommonAnalyzeFields(body, useLlmForRequest);
 
-      const response = await fetch("/api/analyze-stream", {
-        method: "POST",
-        body,
-      });
-
-      if (!response.ok) {
-        const responseText = await response.text();
-        let payload = null;
-        try {
-          payload = responseText ? JSON.parse(responseText) : null;
-        } catch {
-          payload = null;
-        }
-        throw new Error(payload?.error || responseText || "분석 요청에 실패했습니다.");
-      }
-
-      const payload = await parseAnalyzeStream(response);
-      if (!payload) {
-        throw new Error("분석 응답 형식이 올바르지 않습니다.");
-      }
+      const payload = await fetchAnalyzePayload(body);
       setResult(payload);
     } catch (err) {
       setError(err.message);

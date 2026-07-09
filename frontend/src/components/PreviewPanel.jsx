@@ -122,11 +122,14 @@ export function PreviewPanel({
   rows,
   columns,
   findings,
+  totalRows,
 }) {
   const safeHeaders = headers || [];
   const safeRows = rows || [];
   const safeColumns = columns || [];
   const safeFindings = findings || [];
+  const parsedTotalRows = Number(totalRows) || safeRows.length;
+  const isSamplePreview = parsedTotalRows > safeRows.length;
   const [hoveredColumnName, setHoveredColumnName] = useState(safeHeaders[0] || "");
   const hoveredColumn = safeColumns.find((column) => column.raw_name === hoveredColumnName) || null;
   const cellIssueMap = buildCellIssueMap(safeFindings);
@@ -142,6 +145,11 @@ export function PreviewPanel({
   return (
     <div className="preview-layout">
       <div className="preview-table-wrap">
+        {isSamplePreview ? (
+          <div className="preview-sample-note">
+            데이터 미리보기는 상위 {formatCount(safeRows.length)}행만 표시합니다. 검증 결과는 전체 {formatCount(parsedTotalRows)}행 기준입니다.
+          </div>
+        ) : null}
         <table className="preview-table">
           <thead>
             <tr>

@@ -8,12 +8,26 @@ from .tracing import pipeline_trace
 
 VERIFICATION_STEP_NAME = "verifier"
 
-# Final reported issues must either be deterministic from the cell value itself,
-# count-confirmed as a one-to-one truncation, or produced by the strong LLM stage.
-HIGH_PRECISION_ISSUE_RULE_IDS = {
+# Final reported issues must either come from deterministic rule-based validators,
+# count-confirmed as a one-to-one truncation, or be produced by the strong LLM stage.
+DETERMINISTIC_ISSUE_RULE_IDS = {
     "garbled_text",
     "whitespace_issue",
     "special_character_issue",
+    "required_value",
+    "duplicate_data",
+    "date_domain",
+    "number_domain",
+    "boolean_domain",
+    "amount_domain",
+    "quantity_domain",
+    "rate_domain",
+    "time_sequence_consistency",
+    "precedence_accuracy",
+    "logical_consistency",
+    "calculation_formula",
+    "reference_relation",
+    "address_region_prefix_mismatch",
 }
 STRONG_LLM_ISSUE_RULE_IDS = {
     "boolean_domain",
@@ -23,7 +37,6 @@ STRONG_LLM_ISSUE_RULE_IDS = {
     "logical_consistency",
 }
 DETERMINISTIC_TRUNCATION_DETECTORS = {
-    "detector:incomplete_detail_address",
     "detector:truncated_address",
 }
 
@@ -33,7 +46,7 @@ def verify_results(state: PipelineState) -> PipelineState:
     manual_review = 0
     traces = list(state.get("agent_traces", []))
     raw_findings = state.get("findings", [])
-    findings = _high_precision_issue_findings(raw_findings)
+    findings = _verified_findings(raw_findings)
     suppressed_count = _suppressible_issue_count(raw_findings) - _issue_occurrence_count(findings)
 
     for column in state["columns"]:
@@ -60,6 +73,13 @@ def verify_results(state: PipelineState) -> PipelineState:
         )
     )
     return {"summary": summary, "columns": state["columns"], "findings": findings, "agent_traces": traces}
+
+
+def _verified_findings(findings: list) -> list:
+    return [
+        *_high_precision_issue_findings(findings),
+        *_manual_review_findings(findings),
+    ]
 
 
 def _high_precision_issue_findings(findings: list) -> list:
@@ -100,14 +120,47 @@ def _high_precision_issue_findings(findings: list) -> list:
     return deduped
 
 
+def _manual_review_findings(findings: list) -> list:
+    verified = []
+    seen: set[tuple[str, str, str, tuple[int, ...], tuple[str, ...]]] = set()
+    for finding in findings:
+        if finding.finding_type != "manual_review":
+            continue
+        if not _is_final_manual_review_candidate(finding):
+            continue
+        key = (
+            finding.rule_id,
+            finding.column_name,
+            finding.message,
+            tuple(finding.row_indexes),
+            tuple(finding.related_columns),
+        )
+        if key in seen:
+            continue
+        seen.add(key)
+        verified.append(finding)
+    return verified
+
+
 def _is_final_issue_candidate(finding) -> bool:
-    if finding.rule_id in HIGH_PRECISION_ISSUE_RULE_IDS:
+    if _is_deterministic_issue(finding):
         return True
     if _is_count_mapped_truncation(finding):
         return True
     if _is_deterministic_truncation(finding):
         return True
     return _is_strong_llm_issue(finding)
+
+
+def _is_final_manual_review_candidate(finding) -> bool:
+    return bool(finding.row_indexes) or finding.rule_id == "manual_review_required"
+
+
+def _is_deterministic_issue(finding) -> bool:
+    if finding.rule_id not in DETERMINISTIC_ISSUE_RULE_IDS:
+        return False
+    evidence = finding.evidence or []
+    return not any(item.startswith("detector:llm_") or item.startswith("stage:") for item in evidence)
 
 
 def _is_count_mapped_truncation(finding) -> bool:
@@ -120,7 +173,11 @@ def _is_count_mapped_truncation(finding) -> bool:
     full_count = _evidence_int(evidence, "full_count")
     if truncated_count is None or full_count is None:
         return False
-    return full_count > truncated_count
+    if full_count > truncated_count:
+        return True
+    if "mapping:institution_suffix_completion" in evidence:
+        return True
+    return full_count == truncated_count and "mapping:single_char_entity_completion" in evidence
 
 
 def _is_deterministic_truncation(finding) -> bool:
@@ -219,7 +276,7 @@ def _build_quality_summary(
         ),
         "issue_finding_count": _issue_occurrence_count(findings),
         "suppressed_potential_finding_count": suppressed_count,
-        "false_positive_policy": "high_precision_count_mapped_or_strong_llm",
+        "false_positive_policy": "deterministic_rule_or_count_mapped_or_strong_llm",
         "finding_breakdown": _finding_occurrence_breakdown(findings, "category_label"),
         "finding_type_breakdown": _finding_occurrence_breakdown(findings, "display_label"),
         "llm_agents_enabled": bool(state.get("use_llm_agents")),

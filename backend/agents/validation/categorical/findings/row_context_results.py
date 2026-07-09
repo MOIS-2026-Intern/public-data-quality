@@ -137,10 +137,14 @@ def _append_row_context_manual_reviews(
         related_columns = _related_columns(item, header_aliases)
         if column_name not in related_columns:
             related_columns.insert(0, column_name)
-        message = clean_reason_text(item.get("message")) or (
-            f"'{column_name}' 값은 행 문맥상 수동 검토가 필요합니다."
+        reason = _manual_review_text(item.get("reason"))
+        message = _row_context_manual_review_message(
+            item=item,
+            rows=rows,
+            row_index=row_index,
+            column_name=column_name,
+            reason=reason,
         )
-        reason = clean_reason_text(item.get("reason"))
         evidence = [
             f"confidence:{confidence:.2f}",
             f"model:{result.get('_llm_model', '')}",
@@ -168,6 +172,46 @@ def _append_row_context_manual_reviews(
             existing_finding_keys.add(key)
             generated += 1
     return generated
+
+
+def _manual_review_text(value: Any) -> str:
+    cleaned = clean_reason_text(value)
+    if cleaned:
+        return cleaned
+
+    text = " ".join(str(value or "").split())
+    lowered = text.lower()
+    if not text or len(text) > 300:
+        return ""
+    if any(token in lowered for token in ("lorem", "asdf", "n/a", "unknown")):
+        return ""
+    return text
+
+
+def _row_context_manual_review_message(
+    *,
+    item: dict[str, Any],
+    rows: list[dict[str, str]],
+    row_index: int,
+    column_name: str,
+    reason: str,
+) -> str:
+    message = _manual_review_text(item.get("message"))
+    generic_messages = {
+        f"'{column_name}' 값은 행 문맥상 수동 검토가 필요합니다.",
+        "행 문맥상 수동 검토가 필요합니다.",
+        "수동 검토가 필요합니다.",
+    }
+    if message and message not in generic_messages:
+        return message
+
+    value = ""
+    if 0 < row_index <= len(rows):
+        value = str(rows[row_index - 1].get(column_name, "") or "").strip()
+    target = f"'{value}' 값" if value else f"'{column_name}' 값"
+    if reason:
+        return f"{target}은 행 문맥상 수동 검토가 필요합니다: {reason}"
+    return f"{target}은 행 문맥상 수동 검토가 필요합니다."
 
 
 def _parse_row_context_item(

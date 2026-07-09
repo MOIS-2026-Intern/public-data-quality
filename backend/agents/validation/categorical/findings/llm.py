@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from collections import Counter
+import re
+
 try:
     from .....core.config.constants import CATEGORICAL_LLM_CONFIDENCE_THRESHOLD
     from .....core.validation.helpers import build_finding
@@ -14,6 +17,7 @@ from ..checks.column import (
     looks_boolean_column,
     looks_date_column,
     looks_date_value,
+    looks_free_text_column,
     looks_institution_category_column,
 )
 from ..checks.normalization import is_llm_normalization_actionable
@@ -28,6 +32,9 @@ def apply_llm_categorical_findings(
     result: dict,
     findings: list,
 ) -> int:
+    if looks_free_text_column(column):
+        return _append_out_of_domain_findings(column=column, rows=rows, result=result, findings=findings)
+
     generated = 0
     generated += _append_normalization_findings(column=column, rows=rows, result=result, findings=findings)
     generated += _append_invalid_format_findings(column=column, rows=rows, result=result, findings=findings)
@@ -95,6 +102,8 @@ def _append_invalid_format_findings(*, column, rows: list[dict[str, str]], resul
         reason = clean_reason_text(item.get("reason"))
         if not value:
             continue
+        if issue_type == "truncated_text":
+            continue
         rule_id = _invalid_format_rule_id(issue_type)
         criterion_name = _invalid_format_criterion_name(issue_type)
         category_group = "completeness" if issue_type == "malformed_text" else "domain_validity"
@@ -135,12 +144,22 @@ def _append_inconsistent_format_findings(
             continue
         if not looks_date_column(column) and not all(looks_date_value(value) for value in values_in_group):
             continue
+        values_to_review = _date_format_values_to_review(
+            rows=rows,
+            column_name=column.raw_name,
+            values=values_in_group,
+            target_format=target_format,
+        )
+        if not values_to_review:
+            continue
 
         evidence = _llm_evidence(result, confidence, "")
         if target_format:
             evidence.append(f"target_format:{target_format}")
         if reason:
             evidence.append(f"reason:{reason}")
+        if set(values_to_review) != set(values_in_group):
+            evidence.append(f"format_group:{', '.join(values_in_group)}")
         findings.append(
             build_finding(
                 column_name=column.raw_name,
@@ -150,11 +169,11 @@ def _append_inconsistent_format_findings(
                 rule_id="date_format_inconsistent",
                 message=(
                     f"날짜 또는 형식 컬럼에서 표기 형식이 혼용됩니다: "
-                    f"{', '.join(values_in_group)}"
+                    f"{', '.join(values_to_review)}"
                 ),
                 row_indexes=[
                     row_index
-                    for value in values_in_group
+                    for value in values_to_review
                     for row_index in value_rows(rows, column.raw_name, value)
                 ],
                 related_columns=[column.raw_name],
@@ -163,6 +182,73 @@ def _append_inconsistent_format_findings(
         )
         generated += 1
     return generated
+
+
+def _date_format_key(value: str) -> str:
+    text = str(value or "").strip()
+    patterns = (
+        (r"^\d{4}-\d{2}-\d{2}$", "YYYY-MM-DD"),
+        (r"^\d{4}-\d{1,2}-\d{1,2}$", "YYYY-M-D"),
+        (r"^\d{4}\.\d{2}\.\d{2}\.?$", "YYYY.MM.DD"),
+        (r"^\d{4}\.\d{1,2}\.\d{1,2}\.?$", "YYYY.M.D"),
+        (r"^\d{2}\.\d{1,2}\.\d{1,2}\.?$", "YY.M.D"),
+        (r"^\d{4}/\d{1,2}/\d{1,2}$", "YYYY/M/D"),
+        (r"^\d{8}$", "YYYYMMDD"),
+        (r"^\d{6}$", "YYMMDD"),
+        (r"^\d{4}년\d{1,2}월\d{1,2}일?$", "YYYY년M월D일"),
+    )
+    for pattern, key in patterns:
+        if re.fullmatch(pattern, text):
+            return key
+    return ""
+
+
+def _normalize_date_format_key(value: str) -> str:
+    text = re.sub(r"\s+", "", str(value or "")).upper()
+    aliases = {
+        "YYYY-M-D": "YYYY-M-D",
+        "YYYY-MM-DD": "YYYY-MM-DD",
+        "YYYY.MM.DD": "YYYY.MM.DD",
+        "YYYY.M.D": "YYYY.M.D",
+        "YY.M.D": "YY.M.D",
+        "YYYY/MM/DD": "YYYY/M/D",
+        "YYYY/M/D": "YYYY/M/D",
+        "YYYYMMDD": "YYYYMMDD",
+        "YYMMDD": "YYMMDD",
+    }
+    return aliases.get(text, text)
+
+
+def _date_format_values_to_review(
+    *,
+    rows: list[dict[str, str]],
+    column_name: str,
+    values: list[str],
+    target_format: str,
+) -> list[str]:
+    values_by_key = {value: _date_format_key(value) for value in values}
+    target_key = _normalize_date_format_key(target_format)
+    if target_key and target_key in set(values_by_key.values()):
+        return [value for value in values if values_by_key.get(value) != target_key]
+
+    format_counts: Counter[str] = Counter()
+    value_counts = {value: len(value_rows(rows, column_name, value)) for value in values}
+    for value, format_key in values_by_key.items():
+        if format_key:
+            format_counts[format_key] += value_counts[value]
+
+    if len(format_counts) <= 1:
+        return values
+
+    dominant_key, dominant_count = format_counts.most_common(1)[0]
+    if sum(1 for count in format_counts.values() if count == dominant_count) > 1:
+        return values
+
+    return [
+        value
+        for value in values
+        if values_by_key.get(value) and values_by_key[value] != dominant_key
+    ] or values
 
 
 def _append_out_of_domain_findings(*, column, rows: list[dict[str, str]], result: dict, findings: list) -> int:
@@ -260,8 +346,6 @@ def _invalid_format_rule_id(issue_type: str) -> str:
         return "date_domain"
     if issue_type == "malformed_text":
         return "garbled_text"
-    if issue_type == "truncated_text":
-        return "categorical_value_truncated"
     return "categorical_value_out_of_domain"
 
 
@@ -278,6 +362,4 @@ def _invalid_format_criterion_name(issue_type: str) -> str:
 def _invalid_format_message(value: str, issue_type: str) -> str:
     if issue_type == "malformed_text":
         return f"'{value}' 값은 불필요한 기호 또는 깨진 텍스트가 포함된 것으로 보입니다."
-    if issue_type == "truncated_text":
-        return f"'{value}' 값은 문맥상 입력 중 잘렸거나 불완전한 텍스트일 수 있습니다."
     return f"'{value}' 값은 컬럼의 형식 또는 허용값과 맞지 않을 수 있습니다."

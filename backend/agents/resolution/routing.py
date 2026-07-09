@@ -9,6 +9,7 @@ try:
         VALIDATION_CRITERIA,
     )
     from ...core.schema.models import ColumnProfile, PipelineState
+    from ...core.validation.free_text import column_format_kind, looks_free_text_column
 except ImportError:  # pragma: no cover
     if (__package__ or "").split(".", 1)[0] != "agents":
         raise
@@ -18,6 +19,7 @@ except ImportError:  # pragma: no cover
         VALIDATION_CRITERIA,
     )
     from core.schema.models import ColumnProfile, PipelineState
+    from core.validation.free_text import column_format_kind, looks_free_text_column
 from ..base import BaseAgent
 
 if TYPE_CHECKING:
@@ -45,6 +47,9 @@ class LLMRoutingAgent(BaseAgent):
 
     @staticmethod
     def _rule_tags(column: ColumnProfile) -> list[str]:
+        if looks_free_text_column(column):
+            return ["free_text"]
+
         tags = set(column.semantic_tags)
         name = f"{column.raw_name} {column.normalized_name}"
         if any(token in name for token in ("일자", "일시", "날짜", "년월", "등록일", "기준일")):
@@ -105,6 +110,7 @@ class LLMRoutingAgent(BaseAgent):
         for tag in rule_tags:
             rule_ids.extend(TAG_RULE_MAP.get(tag, []))
         column.assigned_rules = list(dict.fromkeys(rule_ids))
+        column.format_kind = column_format_kind(column)
         return column
 
     def _apply_rule_route(self, column: ColumnProfile) -> tuple[ColumnProfile, str]:
@@ -134,6 +140,13 @@ class LLMRoutingAgent(BaseAgent):
             rule_id for rule_id in self._string_list(payload.get("assigned_rules"))
             if rule_id in allowed_rules
         ]
+        if looks_free_text_column(column):
+            column.semantic_tags = ["free_text"]
+            column.assigned_rules = []
+            column.format_kind = "free_format"
+            column.routing_confidence = max(column.routing_confidence, self._confidence(payload.get("confidence")))
+            return column
+
         if self._looks_non_unique_name_column(column):
             assigned_rules = [
                 rule_id
@@ -144,6 +157,7 @@ class LLMRoutingAgent(BaseAgent):
             for tag in column.semantic_tags:
                 assigned_rules.extend(TAG_RULE_MAP.get(tag, []))
         column.assigned_rules = list(dict.fromkeys(assigned_rules))
+        column.format_kind = column_format_kind(column)
 
         column.routing_confidence = max(column.routing_confidence, self._confidence(payload.get("confidence")))
         return column

@@ -12,8 +12,10 @@ except ImportError:  # pragma: no cover
 from ..checks.column import (
     allows_compact_domain_variant_detection,
     allows_context_free_replacement_detection,
+    allows_institution_suffix_truncation,
     allows_local_prefix_truncation,
     allows_local_surface_normalization,
+    looks_free_text_column,
     looks_name_column,
 )
 from ..checks.normalization import (
@@ -25,8 +27,14 @@ from ..checks.text import (
     looks_context_free_replacement_value,
     looks_malformed_text_value,
     looks_non_name_value,
+    normalized_text,
 )
-from ..checks.truncation import find_truncated_value_pairs
+from ..checks.truncation import (
+    find_institution_suffix_completion_pairs,
+    find_truncated_value_pairs,
+    is_institution_suffix_completion,
+    is_single_char_entity_completion,
+)
 from .utils import finding_key, value_rows
 
 
@@ -70,6 +78,9 @@ def apply_local_categorical_findings(
     findings: list,
 ) -> LocalCategoricalFindingCounts:
     existing_finding_keys = {finding_key(finding) for finding in findings}
+    if looks_free_text_column(column):
+        return LocalCategoricalFindingCounts()
+
     normalization_pairs = (
         find_surface_normalization_pairs(counter)
         if allows_local_surface_normalization(column)
@@ -117,7 +128,7 @@ def apply_local_categorical_findings(
             findings.append(finding)
             existing_finding_keys.add(key)
 
-    malformed_values = [value for value in counter if looks_malformed_text_value(value)]
+    malformed_values = [] if looks_free_text_column(column) else [value for value in counter if looks_malformed_text_value(value)]
     for value in malformed_values:
         finding = build_finding(
             column_name=column.raw_name,
@@ -171,8 +182,33 @@ def apply_local_categorical_findings(
             findings.append(finding)
             existing_finding_keys.add(key)
 
-    truncated_pairs = find_truncated_value_pairs(counter) if allows_local_prefix_truncation(column) else []
+    prefix_pairs = find_truncated_value_pairs(counter) if allows_local_prefix_truncation(column) else []
+    institution_pairs = (
+        find_institution_suffix_completion_pairs(counter)
+        if allows_institution_suffix_truncation(column)
+        else []
+    )
+    truncated_pairs = sorted(set(prefix_pairs + institution_pairs))
     for source, target in truncated_pairs:
+        is_single_char_completion = is_single_char_entity_completion(
+            normalized_text(source),
+            normalized_text(target),
+        )
+        is_institution_completion = is_institution_suffix_completion(
+            normalized_text(source),
+            normalized_text(target),
+        )
+        evidence = [
+            f"matched_full_value:{target}",
+            f"truncated_count:{counter[source]}",
+            f"full_count:{counter[target]}",
+            "mapping:one_to_one",
+            "detector:prefix_truncation",
+        ]
+        if is_single_char_completion:
+            evidence.append("mapping:single_char_entity_completion")
+        if is_institution_completion:
+            evidence.append("mapping:institution_suffix_completion")
         finding = build_finding(
             column_name=column.raw_name,
             severity="warning",
@@ -185,13 +221,7 @@ def apply_local_categorical_findings(
             ),
             row_indexes=value_rows(rows, column.raw_name, source),
             related_columns=[column.raw_name],
-            evidence=[
-                f"matched_full_value:{target}",
-                f"truncated_count:{counter[source]}",
-                f"full_count:{counter[target]}",
-                "mapping:one_to_one",
-                "detector:prefix_truncation",
-            ],
+            evidence=evidence,
         )
         key = finding_key(finding)
         if key not in existing_finding_keys:

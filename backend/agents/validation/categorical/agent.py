@@ -10,6 +10,7 @@ except ImportError:  # pragma: no cover
         raise
     from core.config.constants import CATEGORICAL_LLM_MAX_DISTINCT, CATEGORICAL_LLM_MIN_DISTINCT
 from ...base import BaseAgent
+from .checks import looks_free_text_column
 from .findings import (
     LocalCategoricalFindingCounts,
     apply_llm_categorical_findings,
@@ -19,6 +20,7 @@ from .findings import (
     value_rows,
     looks_row_context_signal_column,
     row_context_signal_score,
+    run_llm_address_detail_validation,
     run_llm_row_context_validation,
 )
 from .value_validator import LLMCategoricalValueValidator
@@ -43,6 +45,8 @@ class CategoricalSemanticValidationAgent(BaseAgent):
             return False
         if not column.top_values:
             return False
+        if looks_free_text_column(column):
+            return True
 
         categorical_tokens = (
             "구분",
@@ -68,6 +72,10 @@ class CategoricalSemanticValidationAgent(BaseAgent):
             "조치",
             "민원",
             "안내",
+            "기타",
+            "사이트",
+            "대표문의",
+            "서비스URL",
         )
         categorical_tags = {"enum", "code", "boolean", "name", "date"}
         return bool(categorical_tags.intersection(set(column.semantic_tags))) or any(
@@ -96,6 +104,16 @@ class CategoricalSemanticValidationAgent(BaseAgent):
 
     def _run_llm_row_context_validation(self, *, state, findings, traces):
         return run_llm_row_context_validation(
+            state=state,
+            findings=findings,
+            traces=traces,
+            validator=self.validator,
+            trace=self.trace,
+            debug_detail=lambda: self._llm_debug_detail(True),
+        )
+
+    def _run_llm_address_detail_validation(self, *, state, findings, traces):
+        return run_llm_address_detail_validation(
             state=state,
             findings=findings,
             traces=traces,
@@ -150,6 +168,7 @@ class CategoricalSemanticValidationAgent(BaseAgent):
                 column_name=column.raw_name,
                 standard_candidate=None,
                 semantic_tags=column.semantic_tags,
+                format_kind=column.format_kind or ("free_format" if looks_free_text_column(column) else "fixed_format"),
                 values=values,
             )
             if not result:
@@ -185,6 +204,7 @@ class CategoricalSemanticValidationAgent(BaseAgent):
             )
 
         if use_llm:
+            findings, traces = self._run_llm_address_detail_validation(state=state, findings=findings, traces=traces)
             findings, traces = self._run_llm_row_context_validation(state=state, findings=findings, traces=traces)
 
         return {"findings": findings, "agent_traces": traces}

@@ -7,6 +7,7 @@ from .resolution import (
     SemanticProfilingAgent,
 )
 from .validation.categorical import CategoricalSemanticValidationAgent, LLMCategoricalValueValidator
+from .validation.final_verifier import FinalFindingVerificationAgent, LLMFinalFindingVerifier
 
 
 def build_agents(
@@ -33,12 +34,19 @@ def build_agents(
         strong_model_name=llm_strong_model,
         api_key=openai_api_key,
     )
+    final_finding_verifier = LLMFinalFindingVerifier(
+        model_name=llm_model,
+        fast_model_name=llm_fast_model,
+        strong_model_name=llm_strong_model,
+        api_key=openai_api_key,
+    )
     return {
         "reference_loader": ReferenceLoaderAgent(),
         "schema_parser": SchemaParsingAgent(),
         "rule_router": LLMRoutingAgent(column_resolver=column_resolver),
         "semantic_profiler": SemanticProfilingAgent(semantic_profiler=semantic_profiler),
         "categorical_semantic_validator": CategoricalSemanticValidationAgent(validator=categorical_validator),
+        "final_finding_verifier": FinalFindingVerificationAgent(verifier=final_finding_verifier),
     }
 
 
