@@ -640,7 +640,8 @@ textarea {
 .finding-tabs {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
+  gap: 0;
+  border-bottom: 1px solid #dfe6e2;
 }
 
 .finding-tab {
@@ -653,13 +654,15 @@ textarea {
   overflow: hidden;
   border: none;
   border-radius: 0;
-  padding: 0 0 8px;
+  padding: 0 0 9px;
   background: transparent;
   color: #66756f;
   cursor: pointer;
-  font-size: 0.88rem;
-  font-weight: 600;
+  font-size: 0.92rem;
+  font-weight: 700;
   line-height: 1.2;
+  text-align: center;
+  transition: color 160ms ease;
 }
 
 .finding-tab.is-active {
@@ -678,14 +681,24 @@ textarea {
 
 .finding-tab strong {
   flex: 0 0 auto;
+  min-width: auto;
+  padding: 0;
+  background: transparent;
   color: inherit;
-  font-size: 0.82rem;
+  font-size: 0.84rem;
   font-weight: 700;
+  text-align: center;
 }
 
 .finding-section-table-wrap {
   margin-top: 10px;
   max-width: 100%;
+}
+
+.finding-section-table-wrap table {
+  width: max-content;
+  min-width: 100%;
+  table-layout: auto;
 }
 
 .finding-empty-cell {

@@ -154,7 +154,7 @@ function ControlPanel({
                     className="file-picker-input"
                     type="file"
                     multiple
-                    accept=".txt,.xlsx,.xls,text/plain,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                    accept=".txt,.csv,.tsv,.xlsx,.xls,text/plain,text/csv,text/tab-separated-values,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                     onChange={(event) => setUrlListFiles(Array.from(event.target.files || []))}
                   />
                   <span className="file-picker-action">파일 선택</span>
@@ -362,15 +362,15 @@ function FindingRowsTable({ rows, emptyText }) {
       <table>
         <thead>
           <tr>
+            <th className="finding-cell-nowrap">컬럼</th>
             <th>행</th>
             <th className="finding-cell-nowrap">검증영역</th>
             <th className="finding-cell-nowrap">기준명</th>
-            <th className="finding-cell-nowrap">컬럼</th>
             <th>현재 값</th>
             <th>심각도</th>
             <th className="finding-cell-nowrap">규칙</th>
-            <th>메시지</th>
-            <th>LLM 최종 검증</th>
+            <th className="finding-cell-nowrap">메시지</th>
+            <th className="finding-cell-nowrap">LLM 최종 검증</th>
             <th className="finding-cell-nowrap">관련 컬럼</th>
           </tr>
         </thead>
@@ -381,10 +381,10 @@ function FindingRowsTable({ rows, emptyText }) {
                 key={`${finding.column_name}-${findingIndex}-${rowIndex || "none"}-${occurrenceIndex}`}
                 className={finding.finding_type === "manual_review" ? "finding-row-manual-review" : "finding-row-issue"}
               >
+                <td className="finding-cell-nowrap">{displayValue(finding.column_name)}</td>
                 <td>{displayValue(rowIndex)}</td>
                 <td className="finding-cell-nowrap">{displayValue(finding.category_label)}</td>
                 <td className="finding-cell-nowrap">{displayValue(formatCriterionName(finding.criterion_name))}</td>
-                <td className="finding-cell-nowrap">{displayValue(finding.column_name)}</td>
                 <td>{displayValue(currentValue)}</td>
                 <td>{displayValue(formatSeverity(finding.severity))}</td>
                 <td className="finding-cell-nowrap">{displayValue(formatRuleId(finding.rule_id))}</td>

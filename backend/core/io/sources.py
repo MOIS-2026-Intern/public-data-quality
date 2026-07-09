@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import re
+import gzip
 import zipfile
 from dataclasses import dataclass
 from html import unescape
@@ -11,6 +12,7 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import parse_qsl, quote, unquote, urlencode, urljoin, urlparse, urlunparse
 from urllib.request import Request, urlopen
 
+from .text_encoding import detect_text_encoding
 
 SUPPORTED_DATASET_SUFFIXES = {
     ".csv",
@@ -24,6 +26,7 @@ SUPPORTED_DATASET_SUFFIXES = {
 }
 SUPPORTED_ARCHIVE_SUFFIXES = {".zip"}
 SUPPORTED_UPLOAD_SUFFIXES = SUPPORTED_DATASET_SUFFIXES | SUPPORTED_ARCHIVE_SUFFIXES
+REMOTE_TEXT_SUFFIXES = {".csv", ".tsv", ".txt"}
 REMOTE_TIMEOUT_SECONDS = 60
 PUBLIC_DATA_PORTAL_DOWNLOAD_API_PATH = "/tcs/dss/selectFileDataDownload.do"
 PUBLIC_DATA_PORTAL_FILE_DOWNLOAD_PATH = "/cmm/cmm/fileDownload.do"
@@ -210,6 +213,7 @@ def _fetch_remote(
             payload = response.read()
             content_type = response.headers.get("Content-Type", "")
             content_disposition = response.headers.get("Content-Disposition", "")
+            content_encoding = response.headers.get("Content-Encoding", "")
     except HTTPError as exc:
         detail = exc.read().decode("utf-8", errors="replace")[:300]
         raise ValueError(f"원격 데이터 요청 실패: HTTP {exc.code} {detail}".strip()) from exc
@@ -218,6 +222,7 @@ def _fetch_remote(
 
     if not payload:
         raise ValueError("원격 데이터 응답 본문이 비어 있습니다.")
+    payload = _decompress_remote_payload(payload, content_encoding)
     return payload, content_type, content_disposition
 
 
@@ -512,9 +517,11 @@ def _prepare_remote_payload(
             "URL의 atchFileId/fileDetailSn 값이 유효한지 확인하세요."
         )
 
+    payload = _decompress_remote_payload(payload, "")
     url_filename = None if _is_public_data_portal_direct_download_url(request_url) else _url_filename(request_url)
     filename = _response_filename(content_disposition) or url_filename or fallback_name
     suffix = _classify_remote_payload(payload, content_type, filename)
+    payload = _normalize_remote_text_payload(payload, suffix)
     stored_name = _ensure_suffix(filename, suffix)
     stored_path = _unique_path(output_dir, stored_name)
     stored_path.write_bytes(payload)
@@ -629,6 +636,12 @@ def _url_filename(url: str) -> str | None:
 
 
 def _classify_remote_payload(payload: bytes, content_type: str, filename: str) -> str:
+    stripped = payload.lstrip()
+    if stripped.startswith(b"PK\x03\x04"):
+        return ".xlsx" if _looks_like_xlsx(payload) else ".zip"
+    if _looks_like_xls(stripped):
+        return ".xls"
+
     name_suffix = Path(filename).suffix.lower()
     if name_suffix in SUPPORTED_UPLOAD_SUFFIXES:
         return name_suffix
@@ -643,7 +656,7 @@ def _classify_remote_payload(payload: bytes, content_type: str, filename: str) -
     if normalized_content_type == "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet":
         return ".xlsx"
     if normalized_content_type == "application/vnd.ms-excel":
-        return ".xls" if _looks_like_xls(payload) else ".csv"
+        return ".csv"
     if normalized_content_type in {"text/csv", "application/csv", "text/comma-separated-values"}:
         return ".csv"
     if normalized_content_type == "text/tab-separated-values":
@@ -655,11 +668,6 @@ def _classify_remote_payload(payload: bytes, content_type: str, filename: str) -
     if normalized_content_type in {"application/xml", "text/xml"} or normalized_content_type.endswith("+xml"):
         return ".xml"
 
-    stripped = payload.lstrip()
-    if stripped.startswith(b"PK\x03\x04"):
-        return ".xlsx" if _looks_like_xlsx(payload) else ".zip"
-    if _looks_like_xls(stripped):
-        return ".xls"
     if stripped.startswith((b"{", b"[")):
         return ".json"
     if stripped.startswith(b"<"):
@@ -673,6 +681,30 @@ def _classify_remote_payload(payload: bytes, content_type: str, filename: str) -
     raise ValueError(
         f"원격 데이터 응답 유형을 판별할 수 없습니다. Content-Type={content_type or '<none>'}"
     )
+
+
+def _decompress_remote_payload(payload: bytes, content_encoding: str) -> bytes:
+    encoding = (content_encoding or "").lower()
+    if "gzip" not in encoding and not payload.startswith(b"\x1f\x8b"):
+        return payload
+    try:
+        return gzip.decompress(payload)
+    except (OSError, EOFError):
+        return payload
+
+
+def _detect_remote_text_encoding(payload: bytes) -> str:
+    return detect_text_encoding(
+        payload,
+        error_message="원격 CSV/TXT 파일 인코딩을 판별할 수 없습니다. UTF-8 또는 CP949/EUC-KR 파일인지 확인하세요.",
+    )
+
+
+def _normalize_remote_text_payload(payload: bytes, suffix: str) -> bytes:
+    if suffix not in REMOTE_TEXT_SUFFIXES:
+        return payload
+    text = payload.decode(_detect_remote_text_encoding(payload))
+    return text.encode("utf-8-sig")
 
 
 def _ensure_suffix(filename: str, suffix: str) -> str:

@@ -27,6 +27,41 @@ def test_load_url_list_from_txt(tmp_path) -> None:
     ]
 
 
+def test_load_url_list_from_csv(tmp_path) -> None:
+    path = tmp_path / "urls.csv"
+    path.write_text(
+        "\n".join(
+            [
+                "url",
+                "https://www.data.go.kr/cmm/cmm/fileDownload.do?atchFileId=FILE_1&fileDetailSn=1&insertDataPrcus=N",
+                "https://www.data.go.kr/cmm/cmm/fileDownload.do?atchFileId=FILE_2&fileDetailSn=1&insertDataPrcus=N",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    assert load_url_list(path) == [
+        "https://www.data.go.kr/cmm/cmm/fileDownload.do?atchFileId=FILE_1&fileDetailSn=1&insertDataPrcus=N",
+        "https://www.data.go.kr/cmm/cmm/fileDownload.do?atchFileId=FILE_2&fileDetailSn=1&insertDataPrcus=N",
+    ]
+    assert load_url_list(path, strict=True) == [
+        "https://www.data.go.kr/cmm/cmm/fileDownload.do?atchFileId=FILE_1&fileDetailSn=1&insertDataPrcus=N",
+        "https://www.data.go.kr/cmm/cmm/fileDownload.do?atchFileId=FILE_2&fileDetailSn=1&insertDataPrcus=N",
+    ]
+
+
+def test_strict_url_list_rejects_descriptive_table(tmp_path) -> None:
+    path = tmp_path / "urls.csv"
+    path.write_text("name,url\n서울,https://example.com/seoul.csv\n", encoding="utf-8")
+
+    try:
+        load_url_list(path, strict=True)
+    except ValueError as exc:
+        assert "URL을 찾지 못했습니다" in str(exc)
+    else:  # pragma: no cover
+        raise AssertionError("ValueError was not raised")
+
+
 def test_load_url_list_from_xlsx(tmp_path) -> None:
     path = tmp_path / "urls.xlsx"
     workbook = Workbook()

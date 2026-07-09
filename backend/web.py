@@ -9,6 +9,7 @@ import traceback
 import types
 from pathlib import Path, PureWindowsPath
 from typing import Any
+from urllib.parse import unquote, urlparse
 
 from flask import Flask, Response, abort, jsonify, make_response, request, send_file, send_from_directory, stream_with_context
 from werkzeug.datastructures import FileStorage
@@ -28,6 +29,7 @@ if __package__ in (None, ""):  # pragma: no cover
 
 from .core.io.sources import (
     PreparedDataset,
+    SUPPORTED_UPLOAD_SUFFIXES,
     prepare_api_datasets,
     prepare_saved_dataset,
     prepare_url_datasets,
@@ -40,6 +42,8 @@ from .service import (
     stream_pipeline,
     validation_output_dir,
 )
+
+MAX_URL_LIST_EXPANSION_DEPTH = 3
 
 
 def _uploaded_display_filename(filename: str | None) -> str:
@@ -254,6 +258,70 @@ def _unique_values(values: list[str]) -> list[str]:
     return unique
 
 
+def _is_data_download_like_url(value: str) -> bool:
+    parsed = urlparse(value)
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        return False
+
+    host = (parsed.hostname or "").lower()
+    path = parsed.path.rstrip("/")
+    lower_path = path.lower()
+    if host == "data.go.kr" or host.endswith(".data.go.kr"):
+        if lower_path == "/cmm/cmm/filedownload.do" or lower_path.endswith("/filedata.do"):
+            return True
+
+    return Path(unquote(parsed.path)).suffix.lower() in SUPPORTED_UPLOAD_SUFFIXES
+
+
+def _downloadable_url_list_from_dataset(dataset: PreparedDataset) -> list[str]:
+    try:
+        urls = load_url_list(dataset.path, strict=True)
+    except ValueError:
+        return []
+
+    urls = _unique_values(urls)
+    if not urls or not all(_is_data_download_like_url(url) for url in urls):
+        return []
+    return urls
+
+
+def _prepare_url_input_datasets(
+    data_url: str,
+    tmp_dir: str,
+    *,
+    depth: int = 0,
+    seen_urls: set[str] | None = None,
+) -> list[PreparedDataset]:
+    seen = seen_urls if seen_urls is not None else set()
+    if data_url in seen:
+        return []
+    seen.add(data_url)
+
+    prepared = prepare_url_datasets(data_url, tmp_dir)
+    if depth >= MAX_URL_LIST_EXPANSION_DEPTH:
+        return prepared
+
+    expanded: list[PreparedDataset] = []
+    for dataset in prepared:
+        nested_urls = _downloadable_url_list_from_dataset(dataset)
+        if not nested_urls:
+            expanded.append(dataset)
+            continue
+
+        nested_prepared: list[PreparedDataset] = []
+        for nested_url in nested_urls:
+            nested_prepared.extend(
+                _prepare_url_input_datasets(
+                    nested_url,
+                    tmp_dir,
+                    depth=depth + 1,
+                    seen_urls=seen,
+                )
+            )
+        expanded.extend(nested_prepared or [dataset])
+    return expanded
+
+
 def _prepare_request_datasets(payload: dict[str, Any], tmp_dir: str) -> list[PreparedDataset]:
     prepared: list[PreparedDataset] = []
     for index, uploaded_file in enumerate(_uploaded_files(), start=1):
@@ -299,7 +367,7 @@ def _prepare_request_datasets(payload: dict[str, Any], tmp_dir: str) -> list[Pre
         data_urls = generic_urls
     data_urls = _unique_values(data_urls)
     for data_url in data_urls:
-        prepared.extend(prepare_url_datasets(data_url, tmp_dir))
+        prepared.extend(_prepare_url_input_datasets(data_url, tmp_dir))
 
     api_urls = _payload_values(payload, "api_url", "apiEndpoint", "endpoint", "openapi_url", split_lines=True)
     if not api_urls and generic_urls and (source_hint in {"api", "openapi"} or has_api_options):

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import re
+
 from ...schema.models import ValidationFinding
 from .context import ColumnRuleContext
 from .helpers import matching_row_indexes
@@ -53,6 +55,23 @@ def _looks_date_domain_column(column) -> bool:
     return column.inferred_primitive_type == "date" or (column.date_parse_ratio or 0) > 0
 
 
+def _is_day_of_month_distribution(values: list[str]) -> bool:
+    non_empty_values = [str(value or "").strip() for value in values if str(value or "").strip()]
+    if len(non_empty_values) < 5:
+        return False
+
+    day_values = [
+        value
+        for value in non_empty_values
+        if re.fullmatch(r"\d{1,2}", value) and 1 <= int(value) <= 31
+    ]
+    if len(day_values) / len(non_empty_values) < 0.8:
+        return False
+
+    distinct_days = {int(value) for value in day_values}
+    return len(distinct_days) >= 3
+
+
 def find_invalid_dates(context: ColumnRuleContext) -> list[ValidationFinding]:
     column = context.column
     if not (
@@ -61,6 +80,10 @@ def find_invalid_dates(context: ColumnRuleContext) -> list[ValidationFinding]:
         and column.date_parse_ratio is not None
         and column.date_parse_ratio < 1.0
     ):
+        return []
+
+    values = [row.get(column.raw_name, "") for row in context.rows] if context.rows else column.sample_values
+    if _is_day_of_month_distribution(values):
         return []
 
     row_indexes = matching_row_indexes(
@@ -141,4 +164,3 @@ def find_invalid_booleans(context: ColumnRuleContext) -> list[ValidationFinding]
             evidence=invalid_boolean[:5],
         )
     ]
-

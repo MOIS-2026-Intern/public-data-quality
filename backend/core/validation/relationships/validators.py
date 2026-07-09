@@ -3,7 +3,6 @@ from __future__ import annotations
 from typing import Any, Callable
 
 from ...schema.models import ColumnProfile, ValidationFinding
-from .calculation_rules import validate_calculation_relationships
 from .logical_rules import validate_logical_relationships
 from .reference_rules import validate_reference_relationships
 from .region_address import validate_region_address_relationships
@@ -17,7 +16,6 @@ RelationshipValidator = Callable[
 RELATIONSHIP_VALIDATORS: tuple[RelationshipValidator, ...] = (
     validate_time_relationships,
     validate_logical_relationships,
-    validate_calculation_relationships,
     validate_reference_relationships,
     validate_region_address_relationships,
 )

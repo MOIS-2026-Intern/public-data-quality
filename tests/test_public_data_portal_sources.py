@@ -1,14 +1,28 @@
 from __future__ import annotations
 
 import json
+import gzip
+from io import BytesIO
 from pathlib import Path
 import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import pytest
+from openpyxl import Workbook
 
 import backend.core.io.sources as sources
+
+
+def _xlsx_bytes() -> bytes:
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.append(["서비스명", "주소"])
+    sheet.append(["유치원", "서울"])
+    buffer = BytesIO()
+    workbook.save(buffer)
+    workbook.close()
+    return buffer.getvalue()
 
 
 def test_prepare_url_datasets_resolves_data_go_kr_file_page(monkeypatch, tmp_path) -> None:
@@ -49,7 +63,7 @@ def test_prepare_url_datasets_resolves_data_go_kr_file_page(monkeypatch, tmp_pat
     prepared = sources.prepare_url_datasets(page_url, tmp_path)
 
     assert [(item.display_name, item.response_type) for item in prepared] == [("sample.csv", "csv")]
-    assert prepared[0].path.read_text(encoding="utf-8") == "a,b\n1,2\n"
+    assert prepared[0].path.read_text(encoding="utf-8-sig") == "a,b\n1,2\n"
     assert calls == [(page_url, "GET"), (api_url, "POST"), (download_url, "GET")]
 
 
@@ -106,7 +120,7 @@ def test_prepare_url_datasets_accepts_data_go_kr_direct_download_url(monkeypatch
 
     assert prepared[0].display_name == "FILE_000000003111165_1.csv"
     assert prepared[0].response_type == "csv"
-    assert prepared[0].path.read_text(encoding="utf-8") == "a,b\n1,2\n"
+    assert prepared[0].path.read_text(encoding="utf-8-sig") == "a,b\n1,2\n"
 
 
 def test_prepare_url_datasets_uses_data_go_kr_direct_download_filename(monkeypatch, tmp_path) -> None:
@@ -125,6 +139,58 @@ def test_prepare_url_datasets_uses_data_go_kr_direct_download_filename(monkeypat
 
     assert prepared[0].display_name == "테스트.csv"
     assert prepared[0].response_type == "csv"
+
+
+def test_prepare_url_datasets_keeps_xlsx_when_content_type_is_legacy_excel(monkeypatch, tmp_path) -> None:
+    direct_url = "https://www.data.go.kr/cmm/cmm/fileDownload.do?atchFileId=FILE_XLSX&fileDetailSn=1"
+
+    def fake_fetch(url, *, method, headers=None, body=None):
+        return (
+            _xlsx_bytes(),
+            "application/vnd.ms-excel",
+            "attachment; filename*=UTF-8''%ED%85%8C%EC%8A%A4%ED%8A%B8.xlsx",
+        )
+
+    monkeypatch.setattr(sources, "_fetch_remote", fake_fetch)
+
+    prepared = sources.prepare_url_datasets(direct_url, tmp_path)
+
+    assert prepared[0].display_name == "테스트.xlsx"
+    assert prepared[0].response_type == "xlsx"
+    assert prepared[0].path.read_bytes().startswith(b"PK\x03\x04")
+
+
+def test_prepare_url_datasets_normalizes_cp949_csv_to_utf8(monkeypatch, tmp_path) -> None:
+    direct_url = "https://www.data.go.kr/cmm/cmm/fileDownload.do?atchFileId=FILE_CSV&fileDetailSn=1"
+    cp949_csv = "서비스명,주소\n유치원,서울\n".encode("cp949")
+
+    def fake_fetch(url, *, method, headers=None, body=None):
+        return cp949_csv, "application/vnd.ms-excel", 'attachment; filename="korean.csv"'
+
+    monkeypatch.setattr(sources, "_fetch_remote", fake_fetch)
+
+    prepared = sources.prepare_url_datasets(direct_url, tmp_path)
+
+    assert prepared[0].display_name == "korean.csv"
+    assert prepared[0].response_type == "csv"
+    assert prepared[0].path.read_bytes().startswith(b"\xef\xbb\xbf")
+    assert prepared[0].path.read_text(encoding="utf-8-sig") == "서비스명,주소\n유치원,서울\n"
+
+
+def test_prepare_url_datasets_decompresses_gzip_csv_before_saving(monkeypatch, tmp_path) -> None:
+    direct_url = "https://www.data.go.kr/cmm/cmm/fileDownload.do?atchFileId=FILE_GZIP&fileDetailSn=1"
+    cp949_csv = "서비스명,주소\n초등학교,부산\n".encode("cp949")
+
+    def fake_fetch(url, *, method, headers=None, body=None):
+        return gzip.compress(cp949_csv), "text/csv", 'attachment; filename="korean.csv"'
+
+    monkeypatch.setattr(sources, "_fetch_remote", fake_fetch)
+
+    prepared = sources.prepare_url_datasets(direct_url, tmp_path)
+
+    assert prepared[0].display_name == "korean.csv"
+    assert prepared[0].response_type == "csv"
+    assert prepared[0].path.read_text(encoding="utf-8-sig") == "서비스명,주소\n초등학교,부산\n"
 
 
 def test_prepare_url_datasets_rejects_data_go_kr_direct_download_html(monkeypatch, tmp_path) -> None:
