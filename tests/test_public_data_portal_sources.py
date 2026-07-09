@@ -6,6 +6,8 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+import pytest
+
 import backend.core.io.sources as sources
 
 
@@ -83,3 +85,55 @@ def test_prepare_url_datasets_uses_data_go_kr_content_url_fallback(monkeypatch, 
 
     assert prepared[0].display_name == "direct.csv"
     assert prepared[0].response_type == "csv"
+
+
+def test_prepare_url_datasets_accepts_data_go_kr_direct_download_url(monkeypatch, tmp_path) -> None:
+    direct_url = (
+        "https://www.data.go.kr/cmm/cmm/fileDownload.do"
+        "?atchFileId=FILE_000000003111165&fileDetailSn=1&insertDataPrcus=N"
+    )
+
+    def fake_fetch(url, *, method, headers=None, body=None):
+        assert url == direct_url
+        assert method == "GET"
+        assert headers["Referer"] == "https://www.data.go.kr/"
+        assert body is None
+        return b"a,b\n1,2\n", "application/octet-stream", ""
+
+    monkeypatch.setattr(sources, "_fetch_remote", fake_fetch)
+
+    prepared = sources.prepare_url_datasets(direct_url, tmp_path)
+
+    assert prepared[0].display_name == "FILE_000000003111165_1.csv"
+    assert prepared[0].response_type == "csv"
+    assert prepared[0].path.read_text(encoding="utf-8") == "a,b\n1,2\n"
+
+
+def test_prepare_url_datasets_uses_data_go_kr_direct_download_filename(monkeypatch, tmp_path) -> None:
+    direct_url = "https://www.data.go.kr/cmm/cmm/fileDownload.do?atchFileId=FILE_123&fileDetailSn=7"
+
+    def fake_fetch(url, *, method, headers=None, body=None):
+        return (
+            b"a,b\n1,2\n",
+            "application/octet-stream",
+            "attachment; filename*=UTF-8''%ED%85%8C%EC%8A%A4%ED%8A%B8.csv",
+        )
+
+    monkeypatch.setattr(sources, "_fetch_remote", fake_fetch)
+
+    prepared = sources.prepare_url_datasets(direct_url, tmp_path)
+
+    assert prepared[0].display_name == "테스트.csv"
+    assert prepared[0].response_type == "csv"
+
+
+def test_prepare_url_datasets_rejects_data_go_kr_direct_download_html(monkeypatch, tmp_path) -> None:
+    direct_url = "https://www.data.go.kr/cmm/cmm/fileDownload.do?atchFileId=FILE_123&fileDetailSn=7"
+
+    def fake_fetch(url, *, method, headers=None, body=None):
+        return b"<!doctype html><html><body>error</body></html>", "text/html", ""
+
+    monkeypatch.setattr(sources, "_fetch_remote", fake_fetch)
+
+    with pytest.raises(ValueError, match="파일 대신 HTML"):
+        sources.prepare_url_datasets(direct_url, tmp_path)

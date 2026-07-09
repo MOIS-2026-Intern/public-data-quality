@@ -69,10 +69,22 @@ def prepare_saved_dataset(
 
 def prepare_url_datasets(url: str, output_dir: str | Path) -> list[PreparedDataset]:
     normalized_url = _normalize_http_url(url, "URL")
-    payload, content_type, content_disposition = _fetch_remote(normalized_url, method="GET")
     request_url = normalized_url
+    fetch_headers: dict[str, str] | None = None
+    fallback_name = "url_dataset"
+    if _is_public_data_portal_direct_download_url(normalized_url):
+        fetch_headers = {"Referer": _public_data_portal_referer(normalized_url)}
+        fallback_name = _public_data_portal_download_fallback_name(normalized_url)
+
+    payload, content_type, content_disposition = _fetch_remote(
+        normalized_url,
+        method="GET",
+        headers=fetch_headers,
+    )
     if _is_public_data_portal_file_page(normalized_url, payload, content_type):
         request_url = _resolve_public_data_portal_download_url(normalized_url, payload, content_type)
+        if _is_public_data_portal_direct_download_url(request_url):
+            fallback_name = _public_data_portal_download_fallback_name(request_url)
         payload, content_type, content_disposition = _fetch_remote(
             request_url,
             method="GET",
@@ -85,7 +97,7 @@ def prepare_url_datasets(url: str, output_dir: str | Path) -> list[PreparedDatas
         request_url=request_url,
         output_dir=Path(output_dir),
         source_type="url",
-        fallback_name="url_dataset",
+        fallback_name=fallback_name,
     )
 
 
@@ -233,6 +245,28 @@ def _is_public_data_portal_file_page(url: str, payload: bytes, content_type: str
     if not parsed.path.rstrip("/").endswith("/fileData.do"):
         return False
     return _looks_like_html_response(payload, content_type)
+
+
+def _is_public_data_portal_direct_download_url(url: str) -> bool:
+    parsed = urlparse(url)
+    if not _is_public_data_portal_host(parsed.hostname):
+        return False
+    if parsed.path.rstrip("/") != PUBLIC_DATA_PORTAL_FILE_DOWNLOAD_PATH:
+        return False
+    query = dict(parse_qsl(parsed.query, keep_blank_values=True))
+    return bool(query.get("atchFileId") and query.get("fileDetailSn"))
+
+
+def _public_data_portal_referer(url: str) -> str:
+    parsed = urlparse(url)
+    return urlunparse((parsed.scheme, parsed.netloc, "/", "", "", ""))
+
+
+def _public_data_portal_download_fallback_name(url: str) -> str:
+    query = dict(parse_qsl(urlparse(url).query, keep_blank_values=True))
+    atch_file_id = _safe_filename(query.get("atchFileId", "")) or "data_go_kr_file"
+    file_detail_sn = _safe_filename(query.get("fileDetailSn", ""))
+    return f"{atch_file_id}_{file_detail_sn}" if file_detail_sn else atch_file_id
 
 
 def _resolve_public_data_portal_download_url(page_url: str, payload: bytes, content_type: str) -> str:
@@ -472,7 +506,14 @@ def _prepare_remote_payload(
     source_type: str,
     fallback_name: str,
 ) -> list[PreparedDataset]:
-    filename = _response_filename(content_disposition) or _url_filename(request_url) or fallback_name
+    if _is_public_data_portal_direct_download_url(request_url) and _looks_like_html_response(payload, content_type):
+        raise ValueError(
+            "공공데이터포털 직접 다운로드 URL이 파일 대신 HTML 페이지를 반환했습니다. "
+            "URL의 atchFileId/fileDetailSn 값이 유효한지 확인하세요."
+        )
+
+    url_filename = None if _is_public_data_portal_direct_download_url(request_url) else _url_filename(request_url)
+    filename = _response_filename(content_disposition) or url_filename or fallback_name
     suffix = _classify_remote_payload(payload, content_type, filename)
     stored_name = _ensure_suffix(filename, suffix)
     stored_path = _unique_path(output_dir, stored_name)
@@ -544,13 +585,42 @@ def _zip_member_display_name(member_name: str) -> str:
 def _response_filename(content_disposition: str) -> str | None:
     if not content_disposition:
         return None
-    utf8_match = re.search(r"filename\*=UTF-8''([^;]+)", content_disposition, flags=re.IGNORECASE)
-    if utf8_match:
-        return _safe_filename(unquote(utf8_match.group(1).strip().strip('"')))
+    encoded_match = re.search(
+        r"filename\*=(?P<charset>[^'\";]+)''(?P<filename>[^;]+)",
+        content_disposition,
+        flags=re.IGNORECASE,
+    )
+    if encoded_match:
+        return _safe_filename(
+            _decode_disposition_filename(
+                encoded_match.group("filename"),
+                encoding=encoded_match.group("charset"),
+            )
+        )
     filename_match = re.search(r'filename="?([^";]+)"?', content_disposition, flags=re.IGNORECASE)
     if filename_match:
-        return _safe_filename(unquote(filename_match.group(1).strip()))
+        return _safe_filename(_decode_disposition_filename(filename_match.group(1)))
     return None
+
+
+def _decode_disposition_filename(value: str, encoding: str | None = None) -> str:
+    raw = value.strip().strip('"')
+    if encoding:
+        try:
+            return unquote(raw, encoding=encoding, errors="replace")
+        except LookupError:
+            return unquote(raw)
+
+    decoded = unquote(raw)
+    if decoded != raw:
+        return decoded
+
+    for candidate_encoding in ("utf-8", "cp949", "euc-kr"):
+        try:
+            return raw.encode("latin-1").decode(candidate_encoding)
+        except (UnicodeEncodeError, UnicodeDecodeError):
+            continue
+    return raw
 
 
 def _url_filename(url: str) -> str | None:
