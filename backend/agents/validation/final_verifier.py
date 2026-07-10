@@ -191,7 +191,14 @@ def _finding_candidates(
                 "sample_rows": _sample_finding_rows(finding, rows),
             }
         )
-    return candidates
+    return sorted(candidates, key=_candidate_priority)
+
+
+def _candidate_priority(candidate: dict[str, Any]) -> tuple[int, str]:
+    rule_id = str(candidate.get("rule_id") or "")
+    if rule_id == "amount_domain":
+        return (0, str(candidate.get("id") or ""))
+    return (1, str(candidate.get("id") or ""))
 
 
 def _sample_finding_rows(finding: ValidationFinding, rows: list[dict[str, str]]) -> list[dict[str, Any]]:

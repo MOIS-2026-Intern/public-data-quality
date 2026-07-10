@@ -6,7 +6,9 @@ import sys
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from backend.agents.validation.final_verifier import FinalFindingVerificationAgent
+from backend.agents.validation.final_verifier import _finding_candidates
 from backend.agents.validation.final_verifier import _apply_final_verification
+from backend.core.llm.verification import final_finding_verification_prompt
 from backend.core.schema.models import DatasetMeta
 from backend.core.validation.helpers import build_finding
 
@@ -169,3 +171,51 @@ def test_final_finding_verifier_does_not_append_english_reason_to_message() -> N
     assert verified.message == "서비스명에 불필요한 공백이 포함되어 있습니다."
     assert verified.llm_final_verification == ""
     assert "The values" not in " ".join(verified.evidence)
+
+
+def test_amount_domain_candidates_are_prioritized_for_llm_verification() -> None:
+    date_finding = build_finding(
+        column_name="기준일자",
+        severity="warning",
+        category_group="domain_validity",
+        criterion_name="date_domain",
+        message="날짜 형식이 올바르지 않습니다.",
+        row_indexes=[1],
+    )
+    amount_finding = build_finding(
+        column_name="가격1",
+        severity="warning",
+        category_group="domain_validity",
+        criterion_name="amount_domain",
+        message="금액 도메인 컬럼에 숫자 파싱이 되지 않는 값이 존재합니다.",
+        row_indexes=[2],
+    )
+
+    candidates = _finding_candidates(
+        [(0, date_finding), (1, amount_finding)],
+        [{"기준일자": "2026-99-99"}, {"가격1": "9000(7000)"}],
+    )
+
+    assert [candidate["rule_id"] for candidate in candidates] == ["amount_domain", "date_domain"]
+    assert candidates[0]["sample_rows"] == [{"row_index": 2, "values": {"가격1": "9000(7000)"}}]
+
+
+def test_final_verification_prompt_treats_amount_parse_failures_semantically() -> None:
+    prompt = final_finding_verification_prompt(
+        dataset_name="테스트",
+        provider_name="기관",
+        candidates=[
+            {
+                "id": "f0",
+                "column_name": "가격1",
+                "rule_id": "amount_domain",
+                "message": "금액 도메인 컬럼에 숫자 파싱이 되지 않는 값이 존재합니다.",
+                "sample_rows": [{"row_index": 1, "values": {"가격1": "25,000~"}}],
+            }
+        ],
+    )
+
+    assert "amount_domain" in prompt
+    assert "not a pure number" in prompt
+    assert "parenthesized options" in prompt
+    assert "deleted or unavailable status values" in prompt
