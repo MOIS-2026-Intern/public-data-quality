@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import re
-import uuid
 from collections import Counter, defaultdict
 from pathlib import Path
 from typing import Any
@@ -13,8 +12,9 @@ from openpyxl.utils import get_column_letter
 
 
 REPORTS_DIR_NAME = "reports"
-ERROR_REPORT_SUFFIX = "error_report.xlsx"
+REPORT_EXTENSION = ".xlsx"
 MAX_COMMENT_LENGTH = 32000
+UNSAFE_FILENAME_RE = re.compile(r'[\x00-\x1f\x7f/\\<>:"|?*]+')
 
 
 HEADER_FILL = PatternFill("solid", fgColor="EAF0F6")
@@ -49,9 +49,10 @@ def write_error_report(
 
 
 def _report_filename(dataset_name: str) -> str:
-    safe_name = re.sub(r"[^0-9A-Za-z가-힣._-]+", "_", dataset_name).strip("._") or "dataset"
-    safe_name = safe_name[:80]
-    return f"{safe_name}_{uuid.uuid4().hex[:8]}_{ERROR_REPORT_SUFFIX}"
+    safe_name = UNSAFE_FILENAME_RE.sub("_", dataset_name).strip(" ._") or "dataset"
+    stem = Path(safe_name).stem if Path(safe_name).suffix else safe_name
+    stem = stem.strip(" ._") or "dataset"
+    return f"{stem}{REPORT_EXTENSION}"
 
 
 def _write_summary_sheet(sheet, result: dict[str, Any], validation_rows: list[dict[str, str]]) -> None:

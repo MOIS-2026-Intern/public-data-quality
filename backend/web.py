@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 import os
-import re
 import sys
 import tempfile
 import traceback
@@ -468,11 +467,11 @@ def _report_download_path(value: str) -> Path:
 
 
 def _download_name(filename: str) -> str:
-    safe_name = re.sub(r"[^0-9A-Za-z._-]+", "_", filename).strip("._")
+    safe_name = filename.strip()
     if not safe_name:
         safe_name = "error_report.xlsx"
     if not safe_name.lower().endswith(".xlsx"):
-        safe_name = f"{Path(safe_name).stem or 'error_report'}.xlsx"
+        safe_name = f"{safe_name}.xlsx"
     return safe_name
 
 
