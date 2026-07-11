@@ -524,15 +524,98 @@ function BatchReportActions({ result }) {
   );
 }
 
+function batchItemName(item, index) {
+  return item?.filename || item?.result?.summary?.dataset_name || `데이터 ${index + 1}`;
+}
+
+function filteredBatchEntries(items, searchQuery) {
+  const query = searchQuery.trim().toLowerCase();
+  return items
+    .map((item, index) => ({ item, index, name: batchItemName(item, index) }))
+    .filter(({ item, name }) => {
+      if (!query) return true;
+      const datasetName = item?.result?.summary?.dataset_name || "";
+      return `${name} ${datasetName}`.toLowerCase().includes(query);
+    });
+}
+
+function BatchDatasetSelector({ items, activeIndex, searchQuery, setSearchQuery, onSelect }) {
+  const entries = filteredBatchEntries(items, searchQuery);
+
+  return (
+    <aside className="batch-dataset-panel" aria-label="데이터셋 목록">
+      <div className="batch-dataset-header">
+        <div>
+          <span>데이터셋 목록</span>
+          <strong>{items.length.toLocaleString("ko-KR")}개</strong>
+        </div>
+      </div>
+      <input
+        className="batch-dataset-search"
+        type="search"
+        value={searchQuery}
+        onChange={(event) => setSearchQuery(event.target.value)}
+        placeholder="파일명 검색"
+        aria-label="데이터셋 파일명 검색"
+      />
+      <div className="batch-dataset-list" role="listbox" aria-label="분석 결과 데이터셋">
+        {entries.length ? (
+          entries.map(({ item, index, name }) => {
+            const summary = item.result?.summary || {};
+            return (
+              <button
+                className={`batch-dataset-row ${index === activeIndex ? "is-active" : ""} ${item.ok ? "" : "is-error"}`}
+                type="button"
+                role="option"
+                aria-selected={index === activeIndex}
+                title={name}
+                key={`${name}-${index}`}
+                onClick={() => onSelect(index)}
+              >
+                <span className="batch-dataset-name">{name}</span>
+                {item.ok ? (
+                  <span className="batch-dataset-metrics">
+                    <span>오류 {displayValue(summary.issue_finding_count ?? 0)}</span>
+                    <span>검토 {displayValue(summary.manual_review_finding_count ?? 0)}</span>
+                    <span>행 {displayValue(summary.row_count ?? "-")}</span>
+                  </span>
+                ) : (
+                  <span className="batch-dataset-status">실패</span>
+                )}
+              </button>
+            );
+          })
+        ) : (
+          <div className="batch-dataset-empty">검색 결과가 없습니다.</div>
+        )}
+      </div>
+    </aside>
+  );
+}
+
 function ResultsPanel({ result, loading, progress }) {
   const isBatch = Boolean(result?.batch);
   const batchItems = isBatch ? result.results || [] : [];
   const [activeBatchIndex, setActiveBatchIndex] = useState(0);
+  const [batchSearchQuery, setBatchSearchQuery] = useState("");
   const activeBatchItem = batchItems[activeBatchIndex] || batchItems[0] || null;
 
   useEffect(() => {
     setActiveBatchIndex(0);
+    setBatchSearchQuery("");
   }, [result]);
+
+  useEffect(() => {
+    if (!isBatch || !batchItems.length) return;
+    if (activeBatchIndex >= batchItems.length) {
+      setActiveBatchIndex(0);
+      return;
+    }
+    const entries = filteredBatchEntries(batchItems, batchSearchQuery);
+    if (entries.length && !entries.some((entry) => entry.index === activeBatchIndex)) {
+      setActiveBatchIndex(entries[0].index);
+    }
+  }, [activeBatchIndex, batchItems, batchItems.length, batchSearchQuery, isBatch]);
 
   if (!result) {
     return (
@@ -555,31 +638,23 @@ function ResultsPanel({ result, loading, progress }) {
           {batchItems.length ? (
             <div className="batch-result-shell">
               <BatchReportActions result={result} />
-              <div className="result-tabs" role="tablist" aria-label="분석 결과 데이터셋">
-                {batchItems.map((item, index) => (
-                  <button
-                    className={`result-tab ${index === activeBatchIndex ? "is-active" : ""} ${item.ok ? "" : "is-error"}`}
-                    type="button"
-                    role="tab"
-                    aria-selected={index === activeBatchIndex}
-                    title={item.filename || `데이터 ${index + 1}`}
-                    key={`${item.filename}-${index}`}
-                    onClick={() => setActiveBatchIndex(index)}
-                  >
-                    <span className="result-tab-name">{item.filename || `데이터 ${index + 1}`}</span>
-                    {!item.ok ? <span className="result-tab-status">실패</span> : null}
-                  </button>
-                ))}
+              <BatchDatasetSelector
+                items={batchItems}
+                activeIndex={activeBatchIndex}
+                searchQuery={batchSearchQuery}
+                setSearchQuery={setBatchSearchQuery}
+                onSelect={setActiveBatchIndex}
+              />
+              <div className="batch-active-detail">
+                {activeBatchItem?.ok && activeBatchItem.result ? (
+                  <ResultContent result={activeBatchItem.result} />
+                ) : (
+                  <div className="failed-file">
+                    <strong>{batchItemName(activeBatchItem, activeBatchIndex)}</strong>
+                    <span>{activeBatchItem?.error || "분석 실패"}</span>
+                  </div>
+                )}
               </div>
-
-              {activeBatchItem?.ok && activeBatchItem.result ? (
-                <ResultContent result={activeBatchItem.result} />
-              ) : (
-                <div className="failed-file">
-                  <strong>{activeBatchItem?.filename || "데이터"}</strong>
-                  <span>{activeBatchItem?.error || "분석 실패"}</span>
-                </div>
-              )}
             </div>
           ) : null}
         </>

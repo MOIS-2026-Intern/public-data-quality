@@ -54,7 +54,7 @@ textarea {
   max-width: 1680px;
   margin: 0 auto;
   min-height: 100vh;
-  padding: 14px 14px 24px;
+  padding: 14px 32px 24px;
   display: flex;
   flex-direction: column;
 }
@@ -494,7 +494,7 @@ textarea {
 
 .batch-result-shell {
   display: grid;
-  gap: 14px;
+  gap: 16px;
 }
 
 .summary-card {
@@ -511,13 +511,6 @@ textarea {
   font-weight: 700;
   font-size: 1.03rem;
   overflow-wrap: anywhere;
-}
-
-.result-tabs {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
-  gap: 10px;
-  margin: 0 0 6px;
 }
 
 .report-actions {
@@ -540,59 +533,118 @@ textarea {
   text-decoration: none;
 }
 
-.result-tab {
-  position: relative;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  min-width: 0;
-  overflow: hidden;
-  border: none;
-  border-radius: 0;
-  padding: 0 0 8px;
-  background: transparent;
-  color: #66756f;
-  cursor: pointer;
-  font-size: 0.88rem;
-  font-weight: 600;
-  line-height: 1.2;
+.batch-dataset-panel {
+  display: grid;
+  gap: 8px;
+  padding: 0 0 10px;
+  border-bottom: 1px solid #e6ece9;
 }
 
-.result-tab.is-active {
+.batch-dataset-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  color: #51625c;
+  font-size: 0.86rem;
+}
+
+.batch-dataset-header div {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+
+.batch-dataset-header strong {
+  color: #10221b;
+  font-size: 0.98rem;
+}
+
+.batch-dataset-search {
+  width: 100%;
+  min-height: 36px;
+  border: 1px solid #d7dfdc;
+  border-radius: 8px;
+  padding: 8px 10px;
+  background: #ffffff;
+  color: #10221b;
+}
+
+.batch-dataset-list {
+  display: grid;
+  gap: 0;
+  max-height: 260px;
+  overflow: hidden;
+  overflow-y: auto;
+  border-top: 1px solid #eef2f0;
+}
+
+.batch-dataset-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  border: 0;
+  border-bottom: 1px solid #eef2f0;
+  border-radius: 0;
+  padding: 9px 2px;
+  background: transparent;
+  color: #10221b;
+  cursor: pointer;
+  text-align: left;
+}
+
+.batch-dataset-row:hover {
+  background: #f8faf9;
+}
+
+.batch-dataset-row.is-active {
+  background: #f2f6f4;
   color: #11284d;
 }
 
-.result-tab.is-active::after {
-  content: "";
-  position: absolute;
-  right: 0;
-  bottom: -1px;
-  left: 0;
-  height: 2px;
-  background: #11284d;
+.batch-dataset-row.is-error {
+  color: #8a2424;
 }
 
-.result-tab.is-error {
-  color: #9b2c2c;
-}
-
-.result-tab.is-error.is-active::after {
-  background: #9b2c2c;
-}
-
-.result-tab-name {
+.batch-dataset-name {
   min-width: 0;
   overflow: hidden;
+  font-size: 0.88rem;
+  font-weight: 600;
+  line-height: 1.25;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.result-tab-status {
-  flex: 0 0 auto;
+.batch-dataset-metrics {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px 10px;
+  color: #5d6e68;
+  font-size: 0.78rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.batch-dataset-status {
   color: inherit;
   font-size: 0.78rem;
   font-weight: 700;
+}
+
+.batch-dataset-empty {
+  padding: 14px 10px;
+  color: #66756f;
+  font-size: 0.86rem;
+  text-align: center;
+}
+
+.batch-active-detail {
+  min-width: 0;
 }
 
 .failed-files {
@@ -1038,6 +1090,10 @@ td {
     grid-template-columns: 1fr;
   }
 
+  .batch-dataset-list {
+    max-height: 320px;
+  }
+
 }
 
 @media (max-width: 640px) {
@@ -1067,6 +1123,16 @@ td {
 
   .summary-grid {
     grid-template-columns: 1fr;
+  }
+
+  .batch-dataset-row {
+    grid-template-columns: 1fr;
+    gap: 4px;
+  }
+
+  .batch-dataset-metrics {
+    justify-content: flex-start;
+    white-space: normal;
   }
 
   .app-footer {
