@@ -1,6 +1,7 @@
 :root {
   font-family: "Pretendard Variable", Pretendard, "Noto Sans KR", "Apple SD Gothic Neo", sans-serif;
   font-size: 15px;
+  --app-default-zoom: 0.9;
   color: #10221b;
   background: #ffffff;
   line-height: 1.45;
@@ -27,6 +28,26 @@ textarea {
 
 #root {
   min-height: 100vh;
+}
+
+@media (min-width: 768px) {
+  body {
+    zoom: var(--app-default-zoom);
+  }
+}
+
+@media (min-width: 768px) {
+  @supports not (zoom: 1) {
+    body {
+      overflow-x: hidden;
+    }
+
+    #root {
+      width: calc(100% / var(--app-default-zoom));
+      transform: scale(var(--app-default-zoom));
+      transform-origin: top left;
+    }
+  }
 }
 
 .app-shell {
