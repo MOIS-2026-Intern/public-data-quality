@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import re
-from collections import Counter, defaultdict
+from collections import defaultdict
 from pathlib import Path
 from typing import Any
 
@@ -13,6 +13,7 @@ from openpyxl.utils import get_column_letter
 
 REPORTS_DIR_NAME = "reports"
 REPORT_EXTENSION = ".xlsx"
+BATCH_REPORT_FILENAME = "전체_오류_리포트.xlsx"
 MAX_COMMENT_LENGTH = 32000
 UNSAFE_FILENAME_RE = re.compile(r'[\x00-\x1f\x7f/\\<>:"|?*]+')
 
@@ -42,7 +43,26 @@ def write_error_report(
     _write_summary_sheet(summary_sheet, result, validation_rows)
     _write_data_sheet(workbook.create_sheet("전체 데이터 오류 표시"), result, validation_rows)
     _write_findings_sheet(workbook.create_sheet("오류 상세"), result, validation_rows)
-    _write_column_stats_sheet(workbook.create_sheet("컬럼별 오류 통계"), result)
+
+    workbook.save(report_path)
+    return report_path
+
+
+def write_batch_error_report(
+    *,
+    items: list[dict[str, Any]],
+    output_dir: Path,
+) -> Path:
+    reports_dir = output_dir / REPORTS_DIR_NAME
+    reports_dir.mkdir(parents=True, exist_ok=True)
+
+    report_path = reports_dir / BATCH_REPORT_FILENAME
+    workbook = Workbook()
+    summary_sheet = workbook.active
+    summary_sheet.title = "요약"
+    successful_results = _successful_batch_results(items)
+    _write_batch_summary_sheet(summary_sheet, successful_results)
+    _write_batch_findings_sheet(workbook.create_sheet("오류 상세"), successful_results)
 
     workbook.save(report_path)
     return report_path
@@ -61,14 +81,10 @@ def _write_summary_sheet(sheet, result: dict[str, Any], validation_rows: list[di
     issue_rows = {row_index for row_index, _ in issue_cells}
     issue_columns = {column_name for _, column_name in issue_cells}
     rows = [
-        ("데이터셋", summary.get("dataset_name", "")),
-        ("제공기관", summary.get("provider_name", "")),
+        ("전체 컬럼 수", summary.get("column_count", 0)),
         ("전체 행 수", summary.get("row_count") or len(validation_rows)),
-        ("컬럼 수", summary.get("column_count", 0)),
-        ("오류 건수", summary.get("issue_finding_count", 0)),
+        ("전체 오류 발생 컬럼 수", len(issue_columns)),
         ("오류 발생 행 수", len(issue_rows)),
-        ("오류 발생 컬럼 수", len(issue_columns)),
-        ("수정 제안 수", summary.get("repair_suggestion_count", 0)),
     ]
     sheet.append(["항목", "값"])
     for row in rows:
@@ -107,22 +123,18 @@ def _write_data_sheet(sheet, result: dict[str, Any], validation_rows: list[dict[
 
 def _write_findings_sheet(sheet, result: dict[str, Any], validation_rows: list[dict[str, str]]) -> None:
     headers = [
-        "행 번호",
+        "데이터명",
         "컬럼명",
+        "행 번호",
         "현재 값",
-        "심각도",
-        "검증 영역",
-        "검증 기준",
-        "규칙",
-        "오류 메시지",
+        "오류 메세지",
         "LLM 최종 검증",
-        "관련 컬럼",
-        "근거",
     ]
     sheet.append(headers)
     _style_header_row(sheet, 1)
     sheet.freeze_panes = "A2"
 
+    dataset_name = str(result.get("summary", {}).get("dataset_name") or "")
     for finding in result.get("findings", []):
         if finding.get("finding_type") != "issue":
             continue
@@ -136,47 +148,105 @@ def _write_findings_sheet(sheet, result: dict[str, Any], validation_rows: list[d
                 current_value = validation_rows[row_index - 1].get(column_name, "")
             sheet.append(
                 [
-                    row_index or "",
+                    dataset_name,
                     column_name,
+                    row_index or "",
                     current_value,
-                    finding.get("severity", ""),
-                    finding.get("category_label", ""),
-                    finding.get("criterion_name", ""),
-                    finding.get("rule_id", ""),
                     finding.get("message", ""),
                     finding.get("llm_final_verification", ""),
-                    ", ".join(finding.get("related_columns") or []),
-                    " | ".join(finding.get("evidence") or []),
                 ]
             )
 
     _auto_width(sheet, max_width=48)
 
 
-def _write_column_stats_sheet(sheet, result: dict[str, Any]) -> None:
-    counter: Counter[str] = Counter()
-    severe_counter: dict[str, Counter[str]] = defaultdict(Counter)
-    for finding in result.get("findings", []):
-        if finding.get("finding_type") != "issue":
-            continue
-        column_name = str(finding.get("column_name") or "")
-        count = len(_finding_row_indexes(finding)) or 1
-        counter[column_name] += count
-        severe_counter[column_name][str(finding.get("severity") or "")] += count
-
-    sheet.append(["컬럼명", "오류 건수", "error", "warning", "info"])
+def _write_batch_summary_sheet(sheet, results: list[dict[str, Any]]) -> None:
+    issue_cells = {
+        (dataset_name, row_index, column_name)
+        for result in results
+        for dataset_name in [_result_dataset_name(result)]
+        for row_index, column_name in _issue_cells_by_position(result)
+    }
+    issue_rows = {(dataset_name, row_index) for dataset_name, row_index, _ in issue_cells}
+    issue_columns = {(dataset_name, column_name) for dataset_name, _, column_name in issue_cells}
+    rows = [
+        ("전체 데이터 개수", len(results)),
+        ("전체 컬럼 수", sum(int(result.get("summary", {}).get("column_count") or 0) for result in results)),
+        ("전체 행 수", sum(int(result.get("summary", {}).get("row_count") or 0) for result in results)),
+        ("전체 오류 발생 컬럼 수", len(issue_columns)),
+        ("오류 발생 행 수", len(issue_rows)),
+    ]
+    sheet.append(["항목", "값"])
+    for row in rows:
+        sheet.append(list(row))
     _style_header_row(sheet, 1)
-    for column_name, count in counter.most_common():
-        sheet.append(
-            [
-                column_name,
-                count,
-                severe_counter[column_name].get("error", 0),
-                severe_counter[column_name].get("warning", 0),
-                severe_counter[column_name].get("info", 0),
-            ]
-        )
     _auto_width(sheet)
+    sheet.freeze_panes = "A2"
+
+
+def _write_batch_findings_sheet(sheet, results: list[dict[str, Any]]) -> None:
+    headers = [
+        "데이터명",
+        "컬럼명",
+        "행 번호",
+        "현재 값",
+        "오류 메세지",
+        "LLM 최종 검증",
+    ]
+    sheet.append(headers)
+    _style_header_row(sheet, 1)
+    sheet.freeze_panes = "A2"
+
+    for result in results:
+        dataset_name = _result_dataset_name(result)
+        for finding in result.get("findings", []):
+            if finding.get("finding_type") != "issue":
+                continue
+            column_name = str(finding.get("column_name") or "")
+            row_indexes = _finding_row_indexes(finding) or [None]
+            for row_index in row_indexes:
+                sheet.append(
+                    [
+                        dataset_name,
+                        column_name,
+                        row_index or "",
+                        _finding_current_value(finding, row_index),
+                        finding.get("message", ""),
+                        finding.get("llm_final_verification", ""),
+                    ]
+                )
+    _auto_width(sheet, max_width=48)
+
+
+def _successful_batch_results(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    results: list[dict[str, Any]] = []
+    for item in items:
+        if not item.get("ok") or not isinstance(item.get("result"), dict):
+            continue
+        result = item["result"]
+        if not result.get("summary", {}).get("dataset_name"):
+            result = {
+                **result,
+                "summary": {
+                    **result.get("summary", {}),
+                    "dataset_name": item.get("filename") or "dataset",
+                },
+            }
+        results.append(result)
+    return results
+
+
+def _result_dataset_name(result: dict[str, Any]) -> str:
+    return str(result.get("summary", {}).get("dataset_name") or "dataset")
+
+
+def _finding_current_value(finding: dict[str, Any], row_index: int | None) -> str:
+    if row_index is None:
+        return ""
+    row_values = finding.get("row_values") or {}
+    if isinstance(row_values, dict):
+        return str(row_values.get(str(row_index)) or row_values.get(row_index) or "")
+    return ""
 
 
 def _result_headers(result: dict[str, Any], validation_rows: list[dict[str, str]]) -> list[str]:

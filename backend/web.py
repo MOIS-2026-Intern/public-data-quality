@@ -34,6 +34,7 @@ from .core.io.sources import (
     prepare_url_datasets,
 )
 from .core.io.url_lists import load_url_list
+from .core.reporting import write_batch_error_report
 from .service import (
     PIPELINE_PROGRESS_STEPS,
     REPORT_PROGRESS_STEP,
@@ -427,6 +428,18 @@ def _batch_summary(items: list[dict]) -> dict:
     }
 
 
+def _batch_payload(items: list[dict]) -> dict:
+    summary = _batch_summary(items)
+    if summary["success_count"]:
+        summary["error_report_xlsx"] = str(
+            write_batch_error_report(
+                items=items,
+                output_dir=validation_output_dir(),
+            )
+        )
+    return {"batch": True, "summary": summary, "results": items}
+
+
 def _progress_event(event_type: str, **payload) -> bytes:
     return (json.dumps({"type": event_type, **payload}, ensure_ascii=False) + "\n").encode("utf-8")
 
@@ -510,6 +523,20 @@ def create_app() -> Flask:
             mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         )
 
+    @app.post("/api/reports/batch")
+    def create_batch_report():
+        payload = request.get_json(silent=True) or {}
+        items = payload.get("results") or payload.get("items") or []
+        if not isinstance(items, list):
+            return jsonify({"error": "results는 배열 형식이어야 합니다."}), 400
+        if not any(item.get("ok") and item.get("result") for item in items if isinstance(item, dict)):
+            return jsonify({"error": "리포트를 생성할 성공 결과가 없습니다."}), 400
+        report_path = write_batch_error_report(
+            items=[item for item in items if isinstance(item, dict)],
+            output_dir=validation_output_dir(),
+        )
+        return jsonify({"error_report_xlsx": str(report_path)})
+
     @app.post("/api/analyze")
     @app.post("/analyze")
     @app.post("/api/index")
@@ -542,7 +569,7 @@ def create_app() -> Flask:
 
                 summary = _batch_summary(items)
                 status_code = 200 if summary["success_count"] else 400
-                return jsonify({"batch": True, "summary": summary, "results": items}), status_code
+                return jsonify(_batch_payload(items)), status_code
         except ValueError as exc:
             return jsonify({"error": str(exc)}), 400
         except Exception as exc:  # pragma: no cover
@@ -672,7 +699,7 @@ def create_app() -> Flask:
                     elif len(items) == 1:
                         payload = {"error": items[0].get("error") or "분석 실패"}
                     else:
-                        payload = {"batch": True, "summary": _batch_summary(items), "results": items}
+                        payload = _batch_payload(items)
 
                     yield _progress_event(
                         "final",

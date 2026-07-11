@@ -40,6 +40,23 @@ function batchSummary(items) {
   };
 }
 
+function compactBatchItemsForReport(items) {
+  return items.map((item) => {
+    if (!item.ok || !item.result) {
+      return { ok: false, filename: item.filename || "", error: item.error || "" };
+    }
+    return {
+      ok: true,
+      filename: item.filename || item.result.summary?.dataset_name || "",
+      result: {
+        summary: item.result.summary || {},
+        columns: item.result.columns || [],
+        findings: item.result.findings || [],
+      },
+    };
+  });
+}
+
 function ControlPanel({
   sourceType,
   setSourceType,
@@ -494,6 +511,19 @@ function ResultContent({ result }) {
   );
 }
 
+function BatchReportActions({ result }) {
+  const downloadUrl = reportDownloadUrl(result);
+  if (!downloadUrl) return null;
+
+  return (
+    <div className="report-actions">
+      <a className="download-report-button" href={downloadUrl}>
+        전체 오류 리포트 다운로드
+      </a>
+    </div>
+  );
+}
+
 function ResultsPanel({ result, loading, progress }) {
   const isBatch = Boolean(result?.batch);
   const batchItems = isBatch ? result.results || [] : [];
@@ -524,6 +554,7 @@ function ResultsPanel({ result, loading, progress }) {
         <>
           {batchItems.length ? (
             <div className="batch-result-shell">
+              <BatchReportActions result={result} />
               <div className="result-tabs" role="tablist" aria-label="분석 결과 데이터셋">
                 {batchItems.map((item, index) => (
                   <button
@@ -780,7 +811,29 @@ function App() {
       throw new Error(items[0].error || "분석 실패");
     }
 
-    return { batch: true, summary: batchSummary(items), results: items };
+    const payload = { batch: true, summary: batchSummary(items), results: items };
+    if (items.some((item) => item.ok && item.result)) {
+      try {
+        const reportResponse = await fetch("/api/reports/batch", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ results: compactBatchItemsForReport(items) }),
+        });
+        if (reportResponse.ok) {
+          const reportPayload = await reportResponse.json();
+          if (reportPayload?.error_report_xlsx) {
+            payload.summary = {
+              ...payload.summary,
+              error_report_xlsx: reportPayload.error_report_xlsx,
+            };
+          }
+        }
+      } catch {
+        // 개별 분석 결과 표시는 유지하고, 통합 리포트 버튼만 생략한다.
+      }
+    }
+
+    return payload;
   }
 
   async function handleAnalyze(event) {
