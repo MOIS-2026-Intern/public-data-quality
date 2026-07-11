@@ -4,7 +4,6 @@ import json
 import os
 import sys
 import tempfile
-import traceback
 from pathlib import Path
 
 if os.getenv("VERCEL"):
@@ -14,11 +13,13 @@ PROJECT_DIR = Path(__file__).resolve().parents[1]
 if str(PROJECT_DIR) not in sys.path:
     sys.path.insert(0, str(PROJECT_DIR))
 
+from backend.adapters.web.error_support import STARTUP_FAILED_ERROR_MESSAGE, log_unexpected_exception
 
-def _startup_failed_app(detail: str):
+
+def _startup_failed_app(_detail: str):
     def failed_app(environ, start_response):
         body = json.dumps(
-            {"error": "Backend startup failed", "detail": detail},
+            {"error": STARTUP_FAILED_ERROR_MESSAGE},
             ensure_ascii=False,
         ).encode("utf-8")
         start_response(
@@ -39,7 +40,7 @@ def _load_app():
 
         return create_app()
     except Exception as exc:  # pragma: no cover
-        traceback.print_exc()
+        log_unexpected_exception("Backend startup failed")
         return _startup_failed_app(str(exc) or exc.__class__.__name__)
 
 

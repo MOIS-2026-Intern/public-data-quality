@@ -35,6 +35,38 @@ def test_analyze_prepared_datasets_wraps_single_success() -> None:
     assert payload["results"][0]["filename"] == "sample.csv"
 
 
+def test_analyze_prepared_datasets_does_not_generate_batch_report_path() -> None:
+    datasets = [
+        PreparedDataset(display_name="a.csv", path=Path("/tmp/a.csv"), source_type="file", response_type="csv"),
+        PreparedDataset(display_name="b.csv", path=Path("/tmp/b.csv"), source_type="file", response_type="csv"),
+    ]
+
+    original = execution._analyze_dataset_item
+    results = iter(
+        [
+            {
+                "ok": True,
+                "filename": "a.csv",
+                "result": {"summary": {"dataset_name": "a", "row_count": 1}, "findings": []},
+            },
+            {
+                "ok": True,
+                "filename": "b.csv",
+                "result": {"summary": {"dataset_name": "b", "row_count": 2}, "findings": []},
+            },
+        ]
+    )
+    execution._analyze_dataset_item = lambda **_: next(results)
+    try:
+        payload, status_code = execution.analyze_prepared_datasets(prepared_datasets=datasets, options={})
+    finally:
+        execution._analyze_dataset_item = original
+
+    assert status_code == 200
+    assert payload["batch"] is True
+    assert "error_report_xlsx" not in payload["summary"]
+
+
 def test_analyze_prepared_datasets_wraps_single_failure() -> None:
     dataset = PreparedDataset(
         display_name="sample.csv",

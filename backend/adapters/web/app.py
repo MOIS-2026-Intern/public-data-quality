@@ -3,24 +3,34 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
+# 프로젝트 루트를 Python 모듈 검색 경로에 추가
+project_root = Path(__file__).resolve().parents[3]
+
+if str(project_root) not in sys.path:
+    sys.path.insert(0, str(project_root))
+
 from flask import Flask
 
-if __package__ in (None, ""):  # pragma: no cover
-    project_root = Path(__file__).resolve().parents[3]
-    if str(project_root) not in sys.path:
-        sys.path.insert(0, str(project_root))
-    __package__ = "backend.adapters.web"
-
-from .api_routes import register_api_routes, register_error_handlers
-from .frontend_routes import register_frontend_routes
+from backend.config.env import ensure_runtime_environment
+from backend.adapters.web.api_routes import (
+    register_api_routes,
+    register_error_handlers,
+)
+from backend.adapters.web.frontend_routes import register_frontend_routes
 
 
 def create_app() -> Flask:
-    project_root = Path(__file__).resolve().parents[3]
-    app = Flask(__name__, static_folder=str(project_root / "frontend" / "dist"))
+    ensure_runtime_environment()
+
+    app = Flask(
+        __name__,
+        static_folder=str(project_root / "frontend" / "dist"),
+    )
+
     register_error_handlers(app)
     register_api_routes(app)
     register_frontend_routes(app)
+
     return app
 
 

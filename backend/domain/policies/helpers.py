@@ -4,78 +4,19 @@ import re
 from datetime import datetime
 from typing import Literal, cast
 
-from backend.config.validation import VALIDATION_CRITERIA
+from backend.config.validation import (
+    DATE_PATTERNS,
+    MANUAL_REVIEW_RULE_IDS,
+    RULE_SEVERITY_BY_RULE_ID,
+    SEVERITY_VALUES,
+    VALIDATION_CRITERIA,
+)
 from backend.domain.entities.models import ValidationFinding
 
 Severity = Literal["info", "warning", "error"]
-
-BOOLEAN_ALLOWED_VALUES = {"y", "n", "yes", "no", "true", "false", "0", "1", "예", "아니오", "유", "무"}
-DATE_PATTERNS = (
-    "%Y-%m-%d",
-    "%Y%m%d",
-    "%Y.%m.%d",
-    "%Y/%m/%d",
-    "%Y-%m",
-    "%Y%m",
-    "%Y",
-    "%Y년",
-    "%Y-%m-%d %H:%M:%S",
-    "%Y%m%d%H%M%S",
-)
-TIME_ORDER_TOKENS = [
-    ("시작", "종료"),
-    ("개시", "종료"),
-    ("접수", "처리"),
-    ("등록", "수정"),
-    ("생성", "수정"),
-    ("발생", "종료"),
-    ("출발", "도착"),
-]
-REFERENCE_PAIR_TOKENS = [
-    ("코드", "명"),
-    ("코드", "이름"),
-    ("아이디", "명"),
-    ("아이디", "이름"),
-    ("번호", "명"),
-]
 SUSPICIOUS_SYMBOL_RE = re.compile(r"[�]|[ㄱ-ㅎㅏ-ㅣ]{2,}|[?!]{2,}|[#@$%^*_={}|\\]{3,}")
 BROKEN_TEXT_RE = re.compile(r"[�]|[ㄱ-ㅎㅏ-ㅣ]{2,}")
 PHONE_DIGIT_RE = re.compile(r"^[0-9+\-() ]+$")
-MANUAL_REVIEW_RULE_IDS = {
-    "manual_review_required",
-    "categorical_value_manual_review",
-    "categorical_value_normalization",
-    "date_format_inconsistent",
-    "row_context_manual_review",
-}
-RULE_SEVERITY_BY_RULE_ID: dict[str, Severity] = {
-    "manual_review_required": "info",
-    "categorical_value_manual_review": "info",
-    "categorical_value_normalization": "info",
-    "date_format_inconsistent": "info",
-    "row_context_manual_review": "info",
-    "garbled_text": "error",
-    "whitespace_issue": "warning",
-    "special_character_issue": "warning",
-    "required_value": "warning",
-    "duplicate_data": "warning",
-    "date_domain": "warning",
-    "number_domain": "warning",
-    "boolean_domain": "warning",
-    "amount_domain": "warning",
-    "quantity_domain": "warning",
-    "rate_domain": "warning",
-    "categorical_semantic_domain": "warning",
-    "categorical_value_out_of_domain": "warning",
-    "categorical_value_truncated": "warning",
-    "logical_consistency": "warning",
-    "calculation_formula": "warning",
-    "reference_relation": "warning",
-    "address_region_prefix_mismatch": "warning",
-    "time_sequence_consistency": "error",
-    "precedence_accuracy": "warning",
-}
-SEVERITY_VALUES: set[str] = {"info", "warning", "error"}
 
 
 def severity_for_rule(rule_id: str, fallback: str | None = None) -> Severity:

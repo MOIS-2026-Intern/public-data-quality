@@ -21,6 +21,55 @@ TAG_RULE_MAP = {
     "free_text": [],
 }
 
+BOOLEAN_ALLOWED_VALUES = {"y", "n", "yes", "no", "true", "false", "0", "1", "예", "아니오", "유", "무"}
+DATE_PATTERNS = (
+    "%Y-%m-%d",
+    "%Y%m%d",
+    "%Y.%m.%d",
+    "%Y/%m/%d",
+    "%Y-%m",
+    "%Y%m",
+    "%Y",
+    "%Y년",
+    "%Y-%m-%d %H:%M:%S",
+    "%Y%m%d%H%M%S",
+)
+MANUAL_REVIEW_RULE_IDS = {
+    "manual_review_required",
+    "categorical_value_manual_review",
+    "categorical_value_normalization",
+    "date_format_inconsistent",
+    "row_context_manual_review",
+}
+RULE_SEVERITY_BY_RULE_ID = {
+    "manual_review_required": "info",
+    "categorical_value_manual_review": "info",
+    "categorical_value_normalization": "info",
+    "date_format_inconsistent": "info",
+    "row_context_manual_review": "info",
+    "garbled_text": "error",
+    "whitespace_issue": "warning",
+    "special_character_issue": "warning",
+    "required_value": "warning",
+    "duplicate_data": "warning",
+    "date_domain": "warning",
+    "number_domain": "warning",
+    "boolean_domain": "warning",
+    "amount_domain": "warning",
+    "quantity_domain": "warning",
+    "rate_domain": "warning",
+    "categorical_semantic_domain": "warning",
+    "categorical_value_out_of_domain": "warning",
+    "categorical_value_truncated": "warning",
+    "logical_consistency": "warning",
+    "calculation_formula": "warning",
+    "reference_relation": "warning",
+    "address_region_prefix_mismatch": "warning",
+    "time_sequence_consistency": "error",
+    "precedence_accuracy": "warning",
+}
+SEVERITY_VALUES = {"info", "warning", "error"}
+
 FREE_TEXT_COLUMN_NAME_TOKENS = {
     "기타",
     "기타사항",

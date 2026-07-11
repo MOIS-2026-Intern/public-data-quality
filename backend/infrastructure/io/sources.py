@@ -12,24 +12,17 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import parse_qsl, quote, unquote, urlencode, urljoin, urlparse, urlunparse
 from urllib.request import Request, urlopen
 
+from backend.config.io import (
+    PUBLIC_DATA_PORTAL_DOWNLOAD_API_PATH,
+    PUBLIC_DATA_PORTAL_FILE_DOWNLOAD_PATH,
+    REMOTE_REQUEST_USER_AGENT,
+    REMOTE_TEXT_SUFFIXES,
+    REMOTE_TIMEOUT_SECONDS,
+    SUPPORTED_ARCHIVE_SUFFIXES,
+    SUPPORTED_DATASET_SUFFIXES,
+    SUPPORTED_UPLOAD_SUFFIXES,
+)
 from .text_encoding import detect_text_encoding
-
-SUPPORTED_DATASET_SUFFIXES = {
-    ".csv",
-    ".tsv",
-    ".txt",
-    ".xlsx",
-    ".xls",
-    ".json",
-    ".jsonl",
-    ".xml",
-}
-SUPPORTED_ARCHIVE_SUFFIXES = {".zip"}
-SUPPORTED_UPLOAD_SUFFIXES = SUPPORTED_DATASET_SUFFIXES | SUPPORTED_ARCHIVE_SUFFIXES
-REMOTE_TEXT_SUFFIXES = {".csv", ".tsv", ".txt"}
-REMOTE_TIMEOUT_SECONDS = 60
-PUBLIC_DATA_PORTAL_DOWNLOAD_API_PATH = "/tcs/dss/selectFileDataDownload.do"
-PUBLIC_DATA_PORTAL_FILE_DOWNLOAD_PATH = "/cmm/cmm/fileDownload.do"
 
 
 @dataclass(frozen=True)
@@ -192,7 +185,7 @@ def _fetch_remote(
     request_headers = dict(
         _safe_header_pair(key, value)
         for key, value in {
-            "User-Agent": "LDQ-GPT/1.0",
+            "User-Agent": REMOTE_REQUEST_USER_AGENT,
             "Accept": "*/*",
         }.items()
     )

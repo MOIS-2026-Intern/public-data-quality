@@ -1,17 +1,13 @@
 from __future__ import annotations
 
 from backend.config.llm import (
-    LLM_SEMANTIC_PROFILE_ALWAYS_TRIGGER_NAME_TOKENS,
     LLM_SEMANTIC_PROFILE_ALWAYS_TRIGGER_TAGS,
     LLM_SEMANTIC_PROFILE_AMBIGUOUS_TERMS,
     LLM_SEMANTIC_PROFILE_SKIP_TAGS,
 )
 from backend.domain.entities.models import ColumnProfile
+
 from .free_text import looks_free_text_column
-
-
-def _is_free_text_column(column: ColumnProfile) -> bool:
-    return looks_free_text_column(column)
 
 
 def _is_structured_column(column: ColumnProfile) -> bool:
@@ -26,7 +22,7 @@ def semantic_profile_llm_reasons(column: ColumnProfile) -> list[str]:
 
     if set(column.semantic_tags).intersection(LLM_SEMANTIC_PROFILE_ALWAYS_TRIGGER_TAGS):
         reasons.append("주소/위치 계열 컬럼")
-    if _is_free_text_column(column):
+    if looks_free_text_column(column):
         reasons.append("자유서술형 문자열 컬럼")
     if not column.semantic_tags:
         reasons.append("semantic tag 없음")

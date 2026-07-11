@@ -5,15 +5,13 @@ import math
 from pathlib import Path
 from typing import Any
 
-from backend.config.reporting import QUALITY_DETECTION_RESULTS_CSV_NAME
+from backend.config.reporting import (
+    DETECTION_MATRIX_METADATA_FIELDS,
+    QUALITY_DETECTION_RESULTS_CSV_NAME,
+)
 
+from .artifacts import unique_artifact_path
 from .workbooks import write_error_report
-
-
-DETECTION_MATRIX_METADATA_FIELDS = [
-    "dataset_name",
-    "row_index",
-]
 
 
 def _json_safe(value: Any) -> Any:
@@ -99,7 +97,7 @@ def _issue_cells(result: dict, column_headers: list[tuple[str, str]]) -> set[tup
 
 def write_detection_result_csv(result: dict, output_dir: Path) -> str:
     summary = result["summary"]
-    output_path = output_dir / QUALITY_DETECTION_RESULTS_CSV_NAME
+    output_path = unique_artifact_path(output_dir, QUALITY_DETECTION_RESULTS_CSV_NAME)
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
     column_headers = _detection_column_headers(result)
@@ -130,12 +128,11 @@ def attach_report_paths(
     output_dir: Path,
 ) -> dict:
     payload = _json_safe(response)
-    payload["summary"]["validation_result_csv"] = write_detection_result_csv(payload, output_dir)
-    payload["summary"]["error_report_xlsx"] = str(
-        write_error_report(
-            result=payload,
-            validation_rows=validation_rows,
-            output_dir=output_dir,
-        )
+    payload["summary"]["validation_result_csv"] = Path(write_detection_result_csv(payload, output_dir)).name
+    report_path = write_error_report(
+        result=payload,
+        validation_rows=validation_rows,
+        output_dir=output_dir,
     )
+    payload["summary"]["error_report_xlsx"] = report_path.name
     return payload

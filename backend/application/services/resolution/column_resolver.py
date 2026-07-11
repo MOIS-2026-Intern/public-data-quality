@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import json
-import re
 from typing import Any
 
 try:
@@ -30,6 +28,7 @@ except ImportError:  # pragma: no cover
     from backend.config.llm import LLM_STRONG_FALLBACK_CONFIDENCE
     from backend.config.validation import TAG_RULE_MAP, VALIDATION_CRITERIA
     from backend.domain.entities.models import ColumnProfile
+from ..json_utils import parse_json_content
 from .confidence import coerce_resolution_confidence
 
 
@@ -72,26 +71,6 @@ class LLMColumnResolver:
         self.last_response_preview = llm.last_response_preview
         self.last_model_name = llm.model_name
         self.last_stage = stage
-
-    @staticmethod
-    def _parse_json_content(content: str) -> dict[str, Any] | None:
-        cleaned = content.strip()
-        if cleaned.startswith("```"):
-            cleaned = re.sub(r"^```(?:json)?\s*", "", cleaned)
-            cleaned = re.sub(r"\s*```$", "", cleaned)
-        try:
-            return json.loads(cleaned)
-        except Exception:
-            pass
-
-        match = re.search(r"\{.*\}", cleaned, re.DOTALL)
-        if not match:
-            return None
-
-        try:
-            return json.loads(match.group(0))
-        except Exception:
-            return None
 
     def _invoke_json_payload(
         self,
@@ -137,7 +116,7 @@ class LLMColumnResolver:
         if response is None:
             return None
 
-        payload = self._parse_json_content(response.content)
+        payload = parse_json_content(response.content)
         if payload is None:
             llm.last_error = f"llm_parse_error:{response.content[:200]}"
             self._record_attempt(llm, stage)

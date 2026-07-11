@@ -150,22 +150,16 @@ def pipeline_state_update(
     return payload
 
 
-def update_pipeline_request(state: Mapping[str, Any], **changes: Any) -> PipelineState:
-    payload: PipelineState = dict(state)
-    payload.update(_validated_request_changes(changes))
-    return payload
+def update_pipeline_request(_state: Mapping[str, Any], **changes: Any) -> PipelineState:
+    return cast(PipelineState, _validated_request_changes(changes))
 
 
-def update_pipeline_data(state: Mapping[str, Any], **changes: Any) -> PipelineState:
-    payload: PipelineState = dict(state)
-    payload.update(_validated_data_changes(changes))
-    return payload
+def update_pipeline_data(_state: Mapping[str, Any], **changes: Any) -> PipelineState:
+    return cast(PipelineState, _validated_data_changes(changes))
 
 
-def update_pipeline_result(state: Mapping[str, Any], **changes: Any) -> PipelineState:
-    payload: PipelineState = dict(state)
-    payload.update(_validated_result_changes(changes))
-    return payload
+def update_pipeline_result(_state: Mapping[str, Any], **changes: Any) -> PipelineState:
+    return cast(PipelineState, _validated_result_changes(changes))
 
 
 def merge_state_updates(*updates: Mapping[str, Any]) -> PipelineState:

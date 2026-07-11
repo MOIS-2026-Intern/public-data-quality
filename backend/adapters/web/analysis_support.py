@@ -8,9 +8,10 @@ from flask import abort
 
 from backend.config.pipeline import PIPELINE_PROGRESS_STEPS, REPORT_PROGRESS_STEP
 from backend.infrastructure.io.sources import PreparedDataset
-from backend.infrastructure.reporting.workbooks import write_batch_error_report
+from backend.infrastructure.reporting.artifacts import public_download_name
+from backend.infrastructure.reporting.pipeline_outputs import attach_report_paths
 
-from .pipeline_service import run_pipeline, validation_output_dir
+from .pipeline_service import PipelineRunResult, run_pipeline, validation_output_dir
 
 
 class AnalysisItem(TypedDict, total=False):
@@ -37,15 +38,27 @@ def _analyze_prepared_dataset(
     llm_fast_model: str | None,
     llm_strong_model: str | None,
 ) -> dict:
-    return run_pipeline(
-        uploaded_dataset_csv=str(dataset.path),
-        uploaded_dataset_name=dataset.display_name,
-        use_llm_agents=use_llm_agents,
-        openai_api_key=openai_api_key,
-        llm_model=llm_model,
-        llm_fast_model=llm_fast_model,
-        llm_strong_model=llm_strong_model,
+    return _analysis_result_payload(
+        run_pipeline(
+            uploaded_dataset_csv=str(dataset.path),
+            uploaded_dataset_name=dataset.display_name,
+            use_llm_agents=use_llm_agents,
+            openai_api_key=openai_api_key,
+            llm_model=llm_model,
+            llm_fast_model=llm_fast_model,
+            llm_strong_model=llm_strong_model,
+        )
     )
+
+
+def _analysis_result_payload(result: PipelineRunResult | dict[str, Any]) -> dict[str, Any]:
+    if isinstance(result, PipelineRunResult):
+        return attach_report_paths(
+            response=result.response,
+            validation_rows=result.validation_rows,
+            output_dir=validation_output_dir(),
+        )
+    return result
 
 
 def _batch_summary(items: list[AnalysisItem]) -> dict[str, Any]:
@@ -99,16 +112,6 @@ def _analysis_payload(
         return payload
 
     aggregate_summary = summary or _batch_summary(items)
-    if aggregate_summary["success_count"]:
-        aggregate_summary = {
-            **aggregate_summary,
-            "error_report_xlsx": str(
-                write_batch_error_report(
-                    items=items,
-                    output_dir=validation_output_dir(),
-                )
-            ),
-        }
     return {
         "batch": True,
         "summary": aggregate_summary,
@@ -157,9 +160,4 @@ def _report_download_path(value: str) -> Path:
 
 
 def _download_name(filename: str) -> str:
-    safe_name = filename.strip()
-    if not safe_name:
-        safe_name = "error_report.xlsx"
-    if not safe_name.lower().endswith(".xlsx"):
-        safe_name = f"{safe_name}.xlsx"
-    return safe_name
+    return public_download_name(filename, default_suffix=".xlsx")

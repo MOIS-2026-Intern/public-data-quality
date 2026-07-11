@@ -2,8 +2,9 @@ from __future__ import annotations
 
 from typing import Any
 
+from backend.config.relationships import TIME_ORDER_TOKENS
 from backend.domain.entities.models import ColumnProfile, ValidationFinding
-from ..helpers import TIME_ORDER_TOKENS, build_finding, parse_datetime
+from ..helpers import build_finding, parse_datetime
 from .common import candidate_pairs, find_matching_columns
 
 

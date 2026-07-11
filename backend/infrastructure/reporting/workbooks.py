@@ -10,11 +10,15 @@ from openpyxl.comments import Comment
 from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
 
+from backend.config.reporting import (
+    BATCH_REPORT_FILENAME,
+    MAX_COMMENT_LENGTH,
+    REPORT_EXTENSION,
+    REPORTS_DIR_NAME,
+)
+from .artifacts import unique_artifact_path
 
-REPORTS_DIR_NAME = "reports"
-REPORT_EXTENSION = ".xlsx"
-BATCH_REPORT_FILENAME = "전체_오류_리포트.xlsx"
-MAX_COMMENT_LENGTH = 32000
+
 UNSAFE_FILENAME_RE = re.compile(r'[\x00-\x1f\x7f/\\<>:"|?*]+')
 
 
@@ -35,7 +39,7 @@ def write_error_report(
     reports_dir.mkdir(parents=True, exist_ok=True)
 
     dataset_name = str(result.get("summary", {}).get("dataset_name") or "dataset")
-    report_path = reports_dir / _report_filename(dataset_name)
+    report_path = unique_artifact_path(reports_dir, _report_filename(dataset_name))
 
     workbook = Workbook()
     summary_sheet = workbook.active
@@ -56,7 +60,7 @@ def write_batch_error_report(
     reports_dir = output_dir / REPORTS_DIR_NAME
     reports_dir.mkdir(parents=True, exist_ok=True)
 
-    report_path = reports_dir / BATCH_REPORT_FILENAME
+    report_path = unique_artifact_path(reports_dir, BATCH_REPORT_FILENAME)
     workbook = Workbook()
     summary_sheet = workbook.active
     summary_sheet.title = "요약"

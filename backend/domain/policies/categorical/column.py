@@ -3,32 +3,8 @@ from __future__ import annotations
 import re
 from collections import Counter
 
-from backend.domain.policies.free_text import is_free_format_column as _core_is_free_format_column
-
-DATE_COLUMN_TOKENS = (
-    "일자",
-    "일시",
-    "날짜",
-    "년월",
-    "연도",
-    "년도",
-    "등록일",
-    "기준일",
-    "개방일",
-    "운영일",
-    "시행일",
-    "공개일",
-    "마감일",
-    "시작일",
-    "종료일",
-    "접수일",
-    "처리일",
-    "발생일",
-    "생성일",
-    "수정일",
-    "갱신일",
-)
-TIME_ONLY_COLUMN_TOKENS = ("시간", "시각")
+from backend.config.column_rules import DATE_COLUMN_NAME_TOKENS, TIME_ONLY_COLUMN_NAME_TOKENS
+from backend.domain.policies.columns.free_text import is_free_format_column as _core_is_free_format_column
 
 
 def looks_route_name_column(column) -> bool:
@@ -213,12 +189,12 @@ def is_public_private_category_value(value: str) -> bool:
 
 def looks_date_column(column) -> bool:
     name = f"{column.raw_name} {column.normalized_name}"
-    if any(token in name for token in TIME_ONLY_COLUMN_TOKENS) and not any(
-        token in name for token in DATE_COLUMN_TOKENS
+    if any(token in name for token in TIME_ONLY_COLUMN_NAME_TOKENS) and not any(
+        token in name for token in DATE_COLUMN_NAME_TOKENS
     ):
         return False
     return "date" in column.semantic_tags or any(
-        token in name for token in DATE_COLUMN_TOKENS
+        token in name for token in DATE_COLUMN_NAME_TOKENS
     )
 
 

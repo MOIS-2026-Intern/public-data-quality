@@ -4,23 +4,13 @@ import csv
 import re
 from pathlib import Path
 
-SUPPORTED_URL_LIST_SUFFIXES = {".txt", ".csv", ".tsv", ".xlsx", ".xls"}
+from backend.config.io import (
+    SUPPORTED_URL_LIST_SUFFIXES,
+    TRAILING_URL_PUNCTUATION,
+    URL_LIST_HEADER_VALUES,
+)
+
 URL_PATTERN = re.compile(r"https?://[^\s\"'<>]+", re.IGNORECASE)
-TRAILING_URL_PUNCTUATION = ".,;:)]}>"
-URL_LIST_HEADER_VALUES = {
-    "url",
-    "urls",
-    "link",
-    "links",
-    "dataurl",
-    "dataseturl",
-    "fileurl",
-    "downloadurl",
-    "링크",
-    "url링크",
-    "다운로드url",
-    "파일url",
-}
 
 
 def supported_url_list_suffixes_label() -> str:

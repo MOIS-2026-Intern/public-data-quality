@@ -1,17 +1,22 @@
 from __future__ import annotations
 
-import traceback
 from collections.abc import Callable, Iterator
 from typing import Any
 
 from backend.config.pipeline import PIPELINE_PROGRESS_STEPS, REPORT_PROGRESS_STEP
 from backend.infrastructure.io.sources import PreparedDataset
 
+from .error_support import (
+    UNEXPECTED_ANALYSIS_ERROR_MESSAGE,
+    log_unexpected_exception,
+    public_exception_message,
+)
 from .analysis_support import (
     AnalysisItem,
     AnalysisPayload,
     _analyze_prepared_dataset,
     _analysis_payload,
+    _analysis_result_payload,
     _batch_summary,
     _progress_event,
     _stage_steps,
@@ -86,8 +91,8 @@ def stream_analysis_events(
                     final_stage_index=final_stage_index,
                 )
             except Exception as exc:  # pragma: no cover
-                traceback.print_exc()
-                items.append(_error_item(dataset.display_name, exc))
+                error_message = _analysis_error_message(exc)
+                items.append(_error_item(dataset.display_name, error_message))
                 yield _dataset_finished_event(
                     event_type="file_error",
                     index=index,
@@ -95,7 +100,7 @@ def stream_analysis_events(
                     filename=dataset.display_name,
                     message="실패",
                     final_stage_index=final_stage_index,
-                    error=str(exc) or exc.__class__.__name__,
+                    error=error_message,
                 )
 
         yield _progress_event(
@@ -119,8 +124,7 @@ def _analyze_dataset_item(
         result = _analyze_prepared_dataset(dataset=dataset, **options)
         return _success_item(dataset.display_name, result)
     except Exception as exc:  # pragma: no cover
-        traceback.print_exc()
-        return _error_item(dataset.display_name, exc)
+        return _error_item(dataset.display_name, _analysis_error_message(exc))
 
 
 def _stream_dataset_events(
@@ -137,7 +141,9 @@ def _stream_dataset_events(
         **options,
     ):
         if pipeline_event.get("kind") == "result":
-            result = pipeline_event.get("result")
+            payload = pipeline_event.get("result")
+            if payload is not None:
+                result = _analysis_result_payload(payload)
             continue
         progress_payload = _pipeline_progress_payload(
             index=index,
@@ -241,9 +247,19 @@ def _success_item(filename: str, result: dict[str, Any]) -> AnalysisItem:
     return {"ok": True, "filename": filename, "result": result}
 
 
-def _error_item(filename: str, exc: Exception) -> AnalysisItem:
+def _analysis_error_message(exc: Exception) -> str:
+    error_message = public_exception_message(
+        exc,
+        unexpected_message=UNEXPECTED_ANALYSIS_ERROR_MESSAGE,
+    )
+    if error_message == UNEXPECTED_ANALYSIS_ERROR_MESSAGE:
+        log_unexpected_exception("Dataset analysis failed unexpectedly")
+    return error_message
+
+
+def _error_item(filename: str, error_message: str) -> AnalysisItem:
     return {
         "ok": False,
         "filename": filename,
-        "error": str(exc) or exc.__class__.__name__,
+        "error": error_message,
     }

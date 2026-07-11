@@ -2,12 +2,13 @@ from __future__ import annotations
 
 from typing import Any
 
+from backend.config.relationships import NUMERIC_PAIR_BASE_STEM_TOKENS
 from backend.domain.entities.models import ColumnProfile
 
 
 def base_stem(name: str) -> str:
     stem = name
-    for token in ("총", "합계", "전체", "수", "개수", "건수", "금액", "비율", "율"):
+    for token in NUMERIC_PAIR_BASE_STEM_TOKENS:
         stem = stem.replace(token, "")
     return stem.strip()
 

@@ -3,25 +3,11 @@ from __future__ import annotations
 import json
 import os
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 from backend.config.llm import LLM_DEFAULT_MODEL, LLM_REQUEST_TIMEOUT_SECONDS, OPENAI_DEFAULT_API_URL
-
-try:
-    from dotenv import load_dotenv
-except ImportError:  # pragma: no cover
-    load_dotenv = None
-
-
-def _load_env() -> None:
-    if load_dotenv is None:
-        return
-    package_env = Path(__file__).resolve().parents[2] / ".env"
-    load_dotenv(package_env)
-    load_dotenv()
 
 
 @dataclass
@@ -37,7 +23,6 @@ class ChatLLMClient:
         api_key: str | None = None,
         timeout_seconds: int = LLM_REQUEST_TIMEOUT_SECONDS,
     ):
-        _load_env()
         self.model_name = model_name or os.getenv("OPENAI_MODEL") or LLM_DEFAULT_MODEL
         self.api_url = self._normalize_api_url(api_url or os.getenv("OPENAI_API_URL") or OPENAI_DEFAULT_API_URL)
         self.api_key = api_key or os.getenv("OPENAI_API_KEY") or ""

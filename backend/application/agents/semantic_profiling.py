@@ -11,7 +11,7 @@ from backend.application.dto import (
 )
 from backend.application.services.agent_base import BaseAgent
 from backend.application.services.resolution.semantic_profiler import LLMSemanticProfiler
-from backend.domain.policies import semantic_profile_llm_reasons
+from backend.domain.policies.columns import semantic_profile_llm_reasons
 
 
 class SemanticProfilingAgent(BaseAgent):

@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 from xml.etree import ElementTree
 
+from backend.config.io import RECORD_CONTAINER_KEYS
 from backend.config.uploads import (
     UPLOAD_DATASET_ID_PREFIX,
     UPLOAD_DATASET_TYPE,
@@ -311,23 +312,6 @@ def _iter_xls_rows(path: Path) -> Iterator[dict[str, str]]:
             for index, header in enumerate(headers)
             if header
         }
-
-
-RECORD_CONTAINER_KEYS = (
-    "records",
-    "record",
-    "rows",
-    "row",
-    "items",
-    "item",
-    "data",
-    "result",
-    "results",
-    "list",
-    "body",
-    "response",
-)
-
 
 def _flatten_mapping(value: dict[str, Any], prefix: str = "") -> dict[str, str]:
     row: dict[str, str] = {}

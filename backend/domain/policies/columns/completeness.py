@@ -1,7 +1,12 @@
 from __future__ import annotations
 
+from backend.config.column_rules import (
+    REQUIRED_VALUE_NON_UNIQUE_NAME_TOKENS,
+    REQUIRED_VALUE_NULL_MAX_RATIO,
+    REQUIRED_VALUE_UNIQUE_IDENTIFIER_NAME_TOKENS,
+)
 from backend.domain.entities.models import ValidationFinding
-from ..free_text import looks_free_text_column
+from .free_text import looks_free_text_column
 from .context import ColumnRuleContext
 from .helpers import (
     duplicate_value_row_indexes,
@@ -17,52 +22,6 @@ from ..helpers import (
     has_whitespace_issue,
 )
 
-UNIQUE_IDENTIFIER_NAME_TOKENS = (
-    "고유번호",
-    "고유아이디",
-    "식별번호",
-    "식별자",
-    "일련번호",
-    "관리번호",
-    "등록번호",
-    "허가번호",
-    "면허번호",
-    "접수번호",
-    "문서번호",
-    "데이터번호",
-    "센터ID",
-    "센터아이디",
-    "차량ID",
-    "차량아이디",
-    "ID",
-    "아이디",
-)
-NON_UNIQUE_NAME_TOKENS = (
-    "명",
-    "명칭",
-    "이름",
-    "기관",
-    "부서",
-    "담당",
-    "경찰서",
-    "시설",
-    "업소",
-    "주소",
-    "소재지",
-    "전화",
-    "연락처",
-    "종류",
-    "유형",
-    "구분",
-    "상태",
-    "여부",
-    "유무",
-    "일자",
-    "날짜",
-)
-REQUIRED_NULL_MAX_RATIO = 0.5
-
-
 def _normalize_name_for_identifier_check(value: str) -> str:
     return value.replace(" ", "").replace("_", "").replace("-", "").upper()
 
@@ -70,9 +29,9 @@ def _normalize_name_for_identifier_check(value: str) -> str:
 def _looks_unique_identifier_column(context: ColumnRuleContext) -> bool:
     column = context.column
     name = _normalize_name_for_identifier_check(f"{column.raw_name}{column.normalized_name}")
-    if not any(token.upper() in name for token in UNIQUE_IDENTIFIER_NAME_TOKENS):
+    if not any(token.upper() in name for token in REQUIRED_VALUE_UNIQUE_IDENTIFIER_NAME_TOKENS):
         return False
-    if any(token.upper() in name for token in NON_UNIQUE_NAME_TOKENS):
+    if any(token.upper() in name for token in REQUIRED_VALUE_NON_UNIQUE_NAME_TOKENS):
         return False
     if column.non_empty_count <= 1 or column.distinct_count is None:
         return False
@@ -206,7 +165,7 @@ def find_required_nulls(context: ColumnRuleContext) -> list[ValidationFinding]:
     column = context.column
     if not (is_likely_required(column) and (column.null_count or 0) > 0):
         return []
-    if column.null_ratio is not None and column.null_ratio > REQUIRED_NULL_MAX_RATIO:
+    if column.null_ratio is not None and column.null_ratio > REQUIRED_VALUE_NULL_MAX_RATIO:
         return []
 
     return [

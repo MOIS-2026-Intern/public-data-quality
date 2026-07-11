@@ -4,58 +4,18 @@ import re
 import unicodedata
 from collections.abc import Callable
 
+from backend.config.column_rules import (
+    COMPLETE_DETAIL_ADDRESS_PATTERNS,
+    COMPLETE_DETAIL_ADDRESS_VALUES,
+    DETAIL_ADDRESS_PLACEHOLDER_VALUES,
+    REQUIRED_VALUE_NAME_HINT_TOKENS,
+    REQUIRED_VALUE_OPTIONAL_NAME_TOKENS,
+    REQUIRED_VALUE_TAGS,
+)
 from backend.domain.entities.models import ColumnProfile
 from .context import Rows
 
 RowPredicate = Callable[[str], bool]
-
-DETAIL_ADDRESS_PLACEHOLDER_VALUES = {
-    "-",
-    "--",
-    "---",
-    ".",
-    "·",
-    "없음",
-    "해당없음",
-    "해당없슴",
-    "무",
-    "미상",
-    "불명",
-    "N/A",
-    "NA",
-    "NULL",
-    "NONE",
-    "NAN",
-}
-
-COMPLETE_DETAIL_ADDRESS_VALUES = {
-    "앞",
-    "뒤",
-    "정문",
-    "후문",
-    "입구",
-    "출입구",
-    "본관",
-    "별관",
-    "신관",
-    "구관",
-    "분관",
-    "동관",
-    "서관",
-    "남관",
-    "북관",
-    "지상",
-    "지하",
-    "옥상",
-    "주차장",
-}
-
-COMPLETE_DETAIL_ADDRESS_PATTERNS = (
-    r"^[가-힣A-Z]\d?동$",
-    r"^(?:B|지하)\d+층?$",
-    r"^\d+층$",
-    r"^\d+호$",
-)
 DASH_LIKE_RE = re.compile(r"^[\-\u2010-\u2015\u2212\uFE58\uFE63\uFF0D]+$")
 
 
@@ -93,29 +53,14 @@ def duplicate_value_row_indexes(rows: Rows, column_name: str) -> list[int]:
 
 def is_likely_required(column: ColumnProfile) -> bool:
     name = f"{column.raw_name} {column.normalized_name}"
-    optional_name_tokens = (
-        "상세주소",
-        "상세",
-        "비고",
-        "참고",
-        "메모",
-        "설명",
-        "내용",
-        "특이사항",
-        "기타",
-        "부가",
-    )
-    if any(token in name for token in optional_name_tokens):
+    if any(token in name for token in REQUIRED_VALUE_OPTIONAL_NAME_TOKENS):
         return False
 
-    required_tags = {"identifier", "name", "date"}
-    if required_tags.intersection(column.semantic_tags):
+    if REQUIRED_VALUE_TAGS.intersection(column.semantic_tags):
         return True
     if "address" in column.semantic_tags and "상세" not in name:
         return True
-    return any(
-        token in column.normalized_name for token in ("명", "이름", "번호", "일자")
-    )
+    return any(token in column.normalized_name for token in REQUIRED_VALUE_NAME_HINT_TOKENS)
 
 
 def looks_numeric_column(column: ColumnProfile) -> bool:

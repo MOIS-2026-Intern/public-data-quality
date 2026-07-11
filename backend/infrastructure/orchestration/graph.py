@@ -17,12 +17,14 @@ except ImportError:  # pragma: no cover
 
 
 def build_graph(
+    use_llm_agents: bool = False,
     openai_api_key: str | None = None,
     llm_model: str | None = None,
     llm_fast_model: str | None = None,
     llm_strong_model: str | None = None,
 ):
     agents = build_agents(
+        use_llm_agents=use_llm_agents,
         openai_api_key=openai_api_key,
         llm_model=llm_model,
         llm_fast_model=llm_fast_model,

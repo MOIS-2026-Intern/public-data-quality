@@ -33,7 +33,8 @@ def test_single_error_report_uses_requested_sheets_and_detail_columns(tmp_path) 
     report_path = write_error_report(result=result, validation_rows=validation_rows, output_dir=tmp_path)
     workbook = load_workbook(report_path)
 
-    assert report_path.name == "화성시_어린이보호구역.xlsx"
+    assert report_path.suffix == ".xlsx"
+    assert report_path.name.startswith("화성시_어린이보호구역__")
     assert workbook.sheetnames == ["요약", "전체 데이터 오류 표시", "오류 상세"]
     assert [cell.value for cell in workbook["요약"]["A"]] == [
         "항목",
@@ -83,7 +84,8 @@ def test_batch_error_report_has_summary_and_detail_sheets(tmp_path) -> None:
     report_path = write_batch_error_report(items=items, output_dir=tmp_path)
     workbook = load_workbook(report_path)
 
-    assert report_path.name == "전체_오류_리포트.xlsx"
+    assert report_path.suffix == ".xlsx"
+    assert report_path.name.startswith("전체_오류_리포트__")
     assert workbook.sheetnames == ["요약", "오류 상세"]
     summary_values = {row[0].value: row[1].value for row in workbook["요약"].iter_rows(min_row=2, max_col=2)}
     assert summary_values == {

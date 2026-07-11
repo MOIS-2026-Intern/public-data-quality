@@ -2,45 +2,22 @@ from __future__ import annotations
 
 import re
 
+from backend.config.column_rules import DATE_COLUMN_NAME_TOKENS, TIME_ONLY_COLUMN_NAME_TOKENS
+from backend.config.validation import BOOLEAN_ALLOWED_VALUES
 from backend.domain.entities.models import ValidationFinding
 from .context import ColumnRuleContext
 from .helpers import matching_row_indexes
 from ..helpers import (
-    BOOLEAN_ALLOWED_VALUES,
     PHONE_DIGIT_RE,
     build_finding,
     parse_datetime,
 )
 
-DATE_DOMAIN_NAME_TOKENS = (
-    "일자",
-    "일시",
-    "날짜",
-    "년월",
-    "연도",
-    "년도",
-    "등록일",
-    "기준일",
-    "개방일",
-    "운영일",
-    "시행일",
-    "공개일",
-    "마감일",
-    "시작일",
-    "종료일",
-    "접수일",
-    "처리일",
-    "발생일",
-    "생성일",
-    "수정일",
-    "갱신일",
-)
 
-TIME_ONLY_NAME_TOKENS = ("시간", "시각")
 def _looks_time_only_column(column) -> bool:
     name = f"{column.raw_name} {column.normalized_name}"
-    return any(token in name for token in TIME_ONLY_NAME_TOKENS) and not any(
-        token in name for token in DATE_DOMAIN_NAME_TOKENS
+    return any(token in name for token in TIME_ONLY_COLUMN_NAME_TOKENS) and not any(
+        token in name for token in DATE_COLUMN_NAME_TOKENS
     )
 
 
@@ -49,7 +26,7 @@ def _looks_date_domain_column(column) -> bool:
         return False
 
     name = f"{column.raw_name} {column.normalized_name}"
-    if any(token in name for token in DATE_DOMAIN_NAME_TOKENS):
+    if any(token in name for token in DATE_COLUMN_NAME_TOKENS):
         return True
 
     return column.inferred_primitive_type == "date" or (column.date_parse_ratio or 0) > 0

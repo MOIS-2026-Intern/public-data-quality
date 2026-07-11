@@ -7,11 +7,13 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from backend.application.dto import (
     AgentTrace,
+    merge_state_updates,
     pipeline_data,
     pipeline_request,
     pipeline_result,
     pipeline_rows,
     update_pipeline_data,
+    update_pipeline_result,
 )
 from backend.domain.entities.models import ValidationFinding
 from backend.domain.services.normalization import build_column_profile
@@ -70,7 +72,7 @@ def test_pipeline_accessors_reuse_existing_typed_collections() -> None:
     assert pipeline_result(state).agent_traces is traces
 
 
-def test_update_pipeline_data_reuses_unchanged_collections() -> None:
+def test_update_pipeline_data_returns_partial_update_only() -> None:
     validation_rows = [{"value": "0"}]
     state = {
         "validation_rows": validation_rows,
@@ -79,7 +81,28 @@ def test_update_pipeline_data_reuses_unchanged_collections() -> None:
 
     updated = update_pipeline_data(state, preview_headers=["COL1"])
 
-    assert updated["validation_rows"] is validation_rows
+    assert updated == {"preview_headers": ["COL1"]}
+
+
+def test_merge_state_updates_preserves_prior_partial_changes() -> None:
+    validation_rows = [{"value": "0"}]
+    state = {
+        "validation_rows": validation_rows,
+        "preview_headers": ["OLD"],
+        "summary": {"old": 1},
+    }
+
+    merged = {
+        **state,
+        **merge_state_updates(
+            update_pipeline_data(state, preview_headers=["COL1"]),
+            update_pipeline_result(state, summary={"new": 2}),
+        ),
+    }
+
+    assert merged["validation_rows"] is validation_rows
+    assert merged["preview_headers"] == ["COL1"]
+    assert merged["summary"] == {"new": 2}
 
 
 @pytest.mark.parametrize(

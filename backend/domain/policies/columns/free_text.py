@@ -2,6 +2,12 @@ from __future__ import annotations
 
 import re
 
+from backend.config.column_rules import (
+    FREE_TEXT_LONG_SAMPLE_MIN_COUNT,
+    FREE_TEXT_LONG_SAMPLE_MIN_LENGTH,
+    FREE_TEXT_STRUCTURED_NAME_TOKENS,
+    FREE_TEXT_STRUCTURED_TAGS,
+)
 from backend.config.validation import FREE_TEXT_COLUMN_NAME_TOKENS
 from backend.domain.entities.models import ColumnProfile
 
@@ -20,55 +26,9 @@ def looks_free_text_column(column: ColumnProfile) -> bool:
     if "free_text" in column.semantic_tags:
         return True
 
-    structured_tags = {
-        "address",
-        "date",
-        "phone",
-        "numeric",
-        "count",
-        "quantity",
-        "amount",
-        "rate",
-        "width",
-        "identifier",
-        "code",
-        "boolean",
-        "name",
-        "geo_lat",
-        "geo_lon",
-        "coordinate_pair",
-    }
-    if structured_tags.intersection(set(column.semantic_tags)):
+    if FREE_TEXT_STRUCTURED_TAGS.intersection(set(column.semantic_tags)):
         return False
-    structured_name_tokens = (
-        "주소",
-        "소재지",
-        "일자",
-        "일시",
-        "날짜",
-        "년월",
-        "전화",
-        "연락처",
-        "번호",
-        "코드",
-        "구분",
-        "유형",
-        "상태",
-        "여부",
-        "유무",
-        "기관명",
-        "시설명",
-        "자원명",
-        "학교명",
-        "업소명",
-        "서비스명",
-        "프로그램명",
-        "사업명",
-        "명칭",
-        "위도",
-        "경도",
-    )
-    if any(token in name for token in structured_name_tokens):
+    if any(token in name for token in FREE_TEXT_STRUCTURED_NAME_TOKENS):
         return False
 
     for token in FREE_TEXT_COLUMN_NAME_TOKENS:
@@ -78,8 +38,12 @@ def looks_free_text_column(column: ColumnProfile) -> bool:
 
     if column.inferred_primitive_type != "string":
         return False
-    long_samples = [value.strip() for value in column.sample_values if len(value.strip()) >= 12]
-    return len(long_samples) >= 2
+    long_samples = [
+        value.strip()
+        for value in column.sample_values
+        if len(value.strip()) >= FREE_TEXT_LONG_SAMPLE_MIN_LENGTH
+    ]
+    return len(long_samples) >= FREE_TEXT_LONG_SAMPLE_MIN_COUNT
 
 
 def column_format_kind(column: ColumnProfile) -> str:

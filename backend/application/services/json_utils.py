@@ -12,7 +12,7 @@ def parse_json_content(content: str) -> dict[str, Any] | None:
         cleaned = re.sub(r"\s*```$", "", cleaned)
     try:
         return json.loads(cleaned)
-    except Exception:
+    except json.JSONDecodeError:
         pass
 
     match = re.search(r"\{.*\}", cleaned, re.DOTALL)
@@ -20,5 +20,5 @@ def parse_json_content(content: str) -> dict[str, Any] | None:
         return None
     try:
         return json.loads(match.group(0))
-    except Exception:
+    except json.JSONDecodeError:
         return None

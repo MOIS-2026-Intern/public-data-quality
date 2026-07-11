@@ -1,7 +1,7 @@
 from __future__ import annotations
 
+from backend.config.io import TEXT_DATASET_ENCODINGS
 
-TEXT_DATASET_ENCODINGS = ("utf-8-sig", "utf-8", "cp949", "euc-kr", "utf-16-le", "utf-16-be")
 _TEXT_ENCODING_BOMS = (
     (b"\xef\xbb\xbf", "utf-8-sig"),
     (b"\xff\xfe", "utf-16"),

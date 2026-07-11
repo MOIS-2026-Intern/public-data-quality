@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 import os
+import tempfile
+from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 from backend.adapters.presenters.pipeline_response import _response_from_pipeline_parts
 from backend.application.dto import pipeline_data, pipeline_result
@@ -13,16 +16,40 @@ from backend.config.pipeline import (
     PIPELINE_PROGRESS_STEPS,
     REPORT_PROGRESS_STEP,
 )
-from backend.config.reporting import VALIDATION_OUTPUT_DIR_NAME
+from backend.config.reporting import (
+    VALIDATION_OUTPUT_BASE_DIR_NAME,
+    VALIDATION_OUTPUT_DIR_ENV_VAR,
+    VALIDATION_OUTPUT_DIR_NAME,
+)
 from backend.infrastructure.orchestration.graph import build_graph
-from backend.infrastructure.reporting.pipeline_outputs import attach_report_paths
+
+
+@dataclass(frozen=True)
+class PipelineRunResult:
+    response: dict[str, Any]
+    validation_rows: list[dict[str, str]]
 
 
 def validation_output_dir(base_dir: Path | None = None) -> Path:
-    if os.getenv("VERCEL") and base_dir is None:
-        return Path("/tmp") / VALIDATION_OUTPUT_DIR_NAME
-    base = base_dir or Path(__file__).resolve().parents[2]
+    if base_dir is not None:
+        base = Path(base_dir)
+    else:
+        configured_dir = os.getenv(VALIDATION_OUTPUT_DIR_ENV_VAR)
+        if configured_dir:
+            return Path(configured_dir)
+        if os.getenv("VERCEL"):
+            base = Path("/tmp") / VALIDATION_OUTPUT_BASE_DIR_NAME
+        else:
+            base = Path(tempfile.gettempdir()) / VALIDATION_OUTPUT_BASE_DIR_NAME
     return base / VALIDATION_OUTPUT_DIR_NAME
+
+
+def _pipeline_run_result(result_state: dict[str, Any]) -> PipelineRunResult:
+    data = pipeline_data(result_state)
+    return PipelineRunResult(
+        response=_response_from_pipeline_parts(data, pipeline_result(result_state)),
+        validation_rows=data.validation_rows,
+    )
 
 
 def run_pipeline(
@@ -37,8 +64,9 @@ def run_pipeline(
     llm_model: str | None = None,
     llm_fast_model: str | None = None,
     llm_strong_model: str | None = None,
-) -> dict:
+) -> PipelineRunResult:
     graph = build_graph(
+        use_llm_agents=use_llm_agents,
         openai_api_key=openai_api_key,
         llm_model=llm_model,
         llm_fast_model=llm_fast_model,
@@ -56,12 +84,7 @@ def run_pipeline(
         llm_fast_model=llm_fast_model,
         llm_strong_model=llm_strong_model,
     )
-    data = pipeline_data(result_state)
-    return attach_report_paths(
-        response=_response_from_pipeline_parts(data, pipeline_result(result_state)),
-        validation_rows=data.validation_rows,
-        output_dir=validation_output_dir(),
-    )
+    return _pipeline_run_result(result_state)
 
 
 def stream_pipeline(
@@ -78,6 +101,7 @@ def stream_pipeline(
     llm_strong_model: str | None = None,
 ):
     graph = build_graph(
+        use_llm_agents=use_llm_agents,
         openai_api_key=openai_api_key,
         llm_model=llm_model,
         llm_fast_model=llm_fast_model,
@@ -100,14 +124,9 @@ def stream_pipeline(
             continue
 
         result_state = pipeline_event.get("result") or {}
-        data = pipeline_data(result_state)
         yield {
             "kind": "result",
-            "result": attach_report_paths(
-                response=_response_from_pipeline_parts(data, pipeline_result(result_state)),
-                validation_rows=data.validation_rows,
-                output_dir=validation_output_dir(),
-            ),
+            "result": _pipeline_run_result(result_state),
         }
 
 

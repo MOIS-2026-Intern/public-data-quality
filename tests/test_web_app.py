@@ -47,3 +47,17 @@ def test_analyze_route_returns_single_result_envelope(monkeypatch, tmp_path) -> 
     assert response.status_code == 200
     assert response.get_json()["batch"] is False
     assert response.get_json()["result"]["summary"]["dataset_name"] == "sample"
+
+
+def test_analyze_route_hides_unexpected_error_details(monkeypatch) -> None:
+    app = create_app()
+    client = app.test_client()
+
+    monkeypatch.setattr(api_routes, "_request_payload", lambda: {})
+    monkeypatch.setattr(api_routes, "_request_options", lambda payload: {})
+    monkeypatch.setattr(api_routes, "_prepare_request_datasets", lambda payload, tmp_dir: (_ for _ in ()).throw(RuntimeError("secret detail")))
+
+    response = client.post("/api/analyze")
+
+    assert response.status_code == 500
+    assert response.get_json() == {"error": "서버 내부 오류가 발생했습니다."}

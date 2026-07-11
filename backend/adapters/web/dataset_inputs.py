@@ -6,9 +6,9 @@ from urllib.parse import unquote, urlparse
 from werkzeug.datastructures import FileStorage
 from werkzeug.utils import secure_filename
 
+from backend.config.io import SUPPORTED_UPLOAD_SUFFIXES, URL_LIST_MAX_EXPANSION_DEPTH
 from backend.infrastructure.io.sources import (
     PreparedDataset,
-    SUPPORTED_UPLOAD_SUFFIXES,
     prepare_api_datasets,
     prepare_saved_dataset,
     prepare_url_datasets,
@@ -25,8 +25,6 @@ from .request_utils import (
     _uploaded_files,
     _uploaded_url_list_files,
 )
-
-MAX_URL_LIST_EXPANSION_DEPTH = 3
 
 
 def _save_uploaded_file(
@@ -108,7 +106,7 @@ def _prepare_url_input_datasets(
     seen.add(data_url)
 
     prepared = prepare_url_datasets(data_url, tmp_dir)
-    if depth >= MAX_URL_LIST_EXPANSION_DEPTH:
+    if depth >= URL_LIST_MAX_EXPANSION_DEPTH:
         return prepared
 
     expanded: list[PreparedDataset] = []
