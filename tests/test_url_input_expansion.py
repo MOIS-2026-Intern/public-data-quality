@@ -3,8 +3,8 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-import backend.web as web
-from backend.core.io.sources import PreparedDataset
+import backend.adapters.web.dataset_inputs as web
+from backend.infrastructure.io.sources import PreparedDataset
 
 
 def test_prepare_url_input_datasets_expands_downloaded_public_data_url_list(monkeypatch, tmp_path) -> None:

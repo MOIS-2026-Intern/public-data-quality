@@ -3,9 +3,9 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from backend.core.schema.models import ColumnProfile, DatasetMeta
-from backend.core.validation.columns.rules import validate_column
-from backend.core.validation.relationships import validate_dataset_relationships
+from backend.domain.entities.models import ColumnProfile, DatasetMeta
+from backend.domain.policies.columns.rules import validate_column
+from backend.domain.policies.relationships import validate_dataset_relationships
 
 
 def _dataset_meta() -> DatasetMeta:

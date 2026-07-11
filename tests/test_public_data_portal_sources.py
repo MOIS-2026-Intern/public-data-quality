@@ -11,7 +11,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import pytest
 from openpyxl import Workbook
 
-import backend.core.io.sources as sources
+import backend.infrastructure.io.sources as sources
 
 
 def _xlsx_bytes() -> bytes:

@@ -5,12 +5,14 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from backend.agents.validation.final_verifier import FinalFindingVerificationAgent
-from backend.agents.validation.final_verifier import _finding_candidates
-from backend.agents.validation.final_verifier import _apply_final_verification
-from backend.core.llm.verification import final_finding_verification_prompt
-from backend.core.schema.models import DatasetMeta
-from backend.core.validation.helpers import build_finding
+from backend.application.agents.final_verifier import FinalFindingVerificationAgent
+from backend.application.prompts.verification import final_finding_verification_prompt
+from backend.application.services.verification.final_finding_verifier import (
+    _apply_final_verification,
+    _finding_candidates,
+)
+from backend.domain.entities.models import DatasetMeta
+from backend.domain.policies.helpers import build_finding
 
 
 class FakeVerifier:

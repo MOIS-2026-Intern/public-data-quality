@@ -3,14 +3,14 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from backend.agents.validation.categorical.findings.address_detail import (
+from backend.application.services.categorical_validation.address_detail import (
     address_detail_candidate_rows,
     append_llm_address_detail_findings,
 )
-from backend.core.pipeline.verification import verify_results
-from backend.core.schema.models import ColumnProfile, DatasetMeta
-from backend.core.validation.columns.rules import validate_column
-from backend.core.validation.columns.helpers import looks_incomplete_detail_address, looks_truncated_address_value
+from backend.application.services.pipeline.verification import verify_results
+from backend.domain.entities.models import ColumnProfile, DatasetMeta
+from backend.domain.policies.columns.rules import validate_column
+from backend.domain.policies.columns.helpers import looks_incomplete_detail_address, looks_truncated_address_value
 
 
 def _dataset_meta() -> DatasetMeta:

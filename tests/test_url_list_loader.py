@@ -5,7 +5,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from openpyxl import Workbook
 
-from backend.core.io.url_lists import load_url_list
+from backend.infrastructure.io.url_lists import load_url_list
 
 
 def test_load_url_list_from_txt(tmp_path) -> None:

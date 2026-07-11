@@ -6,14 +6,13 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from backend.agents.resolution.routing import LLMRoutingAgent
-from backend.agents.validation.categorical.checks import allows_local_prefix_truncation
-from backend.agents.validation.categorical.checks.text import looks_malformed_text_value
-from backend.agents.validation.categorical.findings.llm import apply_llm_categorical_findings
-from backend.agents.validation.categorical.findings.local import apply_local_categorical_findings
-from backend.agents.validation.categorical.findings.row_selection import context_columns
-from backend.core.schema.models import ColumnProfile, DatasetMeta
-from backend.core.validation.columns.rules import validate_column
+from backend.application.agents.routing import LLMRoutingAgent
+from backend.application.services.categorical_validation.llm_findings import apply_llm_categorical_findings
+from backend.application.services.categorical_validation.row_selection import context_columns
+from backend.domain.policies.categorical import allows_local_prefix_truncation, apply_local_categorical_findings
+from backend.domain.policies.categorical.text import looks_malformed_text_value
+from backend.domain.entities.models import ColumnProfile, DatasetMeta
+from backend.domain.policies.columns.rules import validate_column
 
 
 def _dataset_meta() -> DatasetMeta:

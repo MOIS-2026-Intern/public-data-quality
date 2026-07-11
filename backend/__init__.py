@@ -10,13 +10,13 @@ if load_dotenv is not None:
 
 
 def build_graph(*args, **kwargs):
-    from .graph import build_graph as _build_graph
+    from .infrastructure.orchestration.graph import build_graph as _build_graph
 
     return _build_graph(*args, **kwargs)
 
 
 def create_app(*args, **kwargs):
-    from .web import create_app as _create_app
+    from .adapters.web.app import create_app as _create_app
 
     return _create_app(*args, **kwargs)
 

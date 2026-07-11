@@ -35,7 +35,7 @@ def _startup_failed_app(detail: str):
 
 def _load_app():
     try:
-        from backend.web import create_app  # noqa: E402
+        from backend.adapters.web.app import create_app  # noqa: E402
 
         return create_app()
     except Exception as exc:  # pragma: no cover

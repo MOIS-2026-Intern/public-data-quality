@@ -3,8 +3,8 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from backend.core.reporting import _report_filename
-from backend.web import _download_name
+from backend.infrastructure.reporting.workbooks import _report_filename
+from backend.adapters.web.analysis_support import _download_name
 
 
 def test_error_report_filename_preserves_korean_dataset_full_name() -> None:

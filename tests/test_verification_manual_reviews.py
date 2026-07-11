@@ -3,9 +3,9 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from backend.core.pipeline.verification import verify_results
-from backend.core.schema.models import ColumnProfile, DatasetMeta
-from backend.core.validation.helpers import build_finding
+from backend.application.services.pipeline.verification import verify_results
+from backend.domain.entities.models import ColumnProfile, DatasetMeta
+from backend.domain.policies.helpers import build_finding
 
 
 def _dataset_meta() -> DatasetMeta:

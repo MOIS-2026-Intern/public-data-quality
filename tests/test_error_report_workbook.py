@@ -5,7 +5,7 @@ from openpyxl import load_workbook
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from backend.core.reporting import write_batch_error_report, write_error_report
+from backend.infrastructure.reporting.workbooks import write_batch_error_report, write_error_report
 
 
 def _issue_finding(column_name: str, row_index: int, value: str, message: str) -> dict:

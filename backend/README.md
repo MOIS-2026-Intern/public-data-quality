@@ -4,9 +4,11 @@ Backend service for public data quality analysis and validation workflows.
 
 ## Structure
 
-- `agents/`: domain-specific workflow and validation agents
-- `core/`: shared core logic
-- `graph.py`, `service.py`, `web.py`: application entry modules
+- `adapters/`: web entrypoints and response presenters
+- `application/`: use cases, DTOs, ports, prompts, and agent orchestration
+- `domain/`: entities, policies, and domain services
+- `infrastructure/`: LLM clients, dataset I/O, reporting, and graph assembly
+- `config/`: shared configuration constants
 
 ## Notes
 

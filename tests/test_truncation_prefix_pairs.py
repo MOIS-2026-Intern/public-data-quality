@@ -4,13 +4,13 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from backend.agents.validation.categorical.checks.column import (
+from backend.domain.policies.categorical import (
     allows_institution_suffix_truncation,
     allows_local_prefix_truncation,
+    apply_local_categorical_findings,
 )
-from backend.agents.validation.categorical.checks.truncation import find_truncated_value_pairs
-from backend.agents.validation.categorical.findings.local import apply_local_categorical_findings
-from backend.core.schema.models import ColumnProfile
+from backend.domain.policies.categorical.truncation import find_truncated_value_pairs
+from backend.domain.entities.models import ColumnProfile
 
 
 def test_prefix_truncation_detects_real_cutoff_value() -> None:

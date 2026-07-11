@@ -3,8 +3,8 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from backend.core.validation.helpers import build_finding
-from backend.service import _response_findings_with_row_values
+from backend.domain.policies.helpers import build_finding
+from backend.adapters.presenters.pipeline_response import _response_findings_with_row_values
 
 
 def test_response_findings_include_values_beyond_preview_rows() -> None:

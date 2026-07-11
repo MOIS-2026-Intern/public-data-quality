@@ -5,7 +5,7 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from backend.core.io.loaders import iter_uploaded_rows, load_uploaded_dataset_meta, load_uploaded_headers
+from backend.infrastructure.io.loaders import iter_uploaded_rows, load_uploaded_dataset_meta, load_uploaded_headers
 
 
 def test_cp949_csv_headers_and_rows_are_loaded(tmp_path) -> None:

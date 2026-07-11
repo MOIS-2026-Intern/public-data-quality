@@ -3,9 +3,9 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from backend.agents.validation.categorical.findings.llm import apply_llm_categorical_findings
-from backend.agents.validation.categorical.findings.row_context_results import append_row_context_findings
-from backend.core.schema.models import ColumnProfile
+from backend.application.services.categorical_validation.llm_findings import apply_llm_categorical_findings
+from backend.application.services.categorical_validation.row_context_results import append_row_context_findings
+from backend.domain.entities.models import ColumnProfile
 
 
 def test_date_format_inconsistent_flags_non_representative_format_only() -> None:

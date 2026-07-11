@@ -25,6 +25,7 @@ build/
 
 # Generated outputs
 /validation/
+backend/validation/
 
 # IDE / OS
 .DS_Store
