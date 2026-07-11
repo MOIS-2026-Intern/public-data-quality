@@ -1,3 +1,35 @@
-from .pipeline import AgentTrace, PipelineState
+from .pipeline import (
+    AgentTrace,
+    PipelineData,
+    PipelineRequest,
+    PipelineResult,
+    PipelineState,
+    merge_state_updates,
+    pipeline_data,
+    pipeline_request,
+    pipeline_result,
+    pipeline_rows,
+    pipeline_state_update,
+    require_dataset_meta,
+    update_pipeline_data,
+    update_pipeline_request,
+    update_pipeline_result,
+)
 
-__all__ = ["AgentTrace", "PipelineState"]
+__all__ = [
+    "AgentTrace",
+    "PipelineData",
+    "PipelineRequest",
+    "PipelineResult",
+    "PipelineState",
+    "merge_state_updates",
+    "pipeline_data",
+    "pipeline_request",
+    "pipeline_result",
+    "pipeline_rows",
+    "pipeline_state_update",
+    "require_dataset_meta",
+    "update_pipeline_data",
+    "update_pipeline_request",
+    "update_pipeline_result",
+]

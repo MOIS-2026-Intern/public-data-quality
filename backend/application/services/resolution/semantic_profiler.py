@@ -5,10 +5,10 @@ import re
 from typing import Any
 
 try:
-    from backend.application.dto.pipeline import PipelineState
+    from backend.application.dto import PipelineState, require_dataset_meta
     from backend.application.ports import JsonLLMPort
     from backend.application.prompts.resolution import SEMANTIC_PROFILE_SYSTEM_PROMPT, semantic_profile_prompt
-    from backend.config.constants import (
+    from backend.config.llm import (
         LLM_SEMANTIC_PROFILE_CONFIDENCE_DEFAULT,
         LLM_STRONG_FALLBACK_CONFIDENCE,
     )
@@ -16,10 +16,10 @@ try:
 except ImportError:  # pragma: no cover
     if (__package__ or "").split(".", 1)[0] != "services":
         raise
-    from backend.application.dto.pipeline import PipelineState
+    from backend.application.dto import PipelineState, require_dataset_meta
     from backend.application.ports import JsonLLMPort
     from backend.application.prompts.resolution import SEMANTIC_PROFILE_SYSTEM_PROMPT, semantic_profile_prompt
-    from backend.config.constants import (
+    from backend.config.llm import (
         LLM_SEMANTIC_PROFILE_CONFIDENCE_DEFAULT,
         LLM_STRONG_FALLBACK_CONFIDENCE,
     )
@@ -153,7 +153,7 @@ class LLMSemanticProfiler:
         if llm is None:
             return None
 
-        dataset_meta = state["dataset_meta"]
+        dataset_meta = require_dataset_meta(state)
         payload = self._invoke_json_payload(
             semantic_profile_prompt(
                 dataset_name=dataset_meta.dataset_name,

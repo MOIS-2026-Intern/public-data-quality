@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from backend.config.constants import (
+from backend.config.llm import (
     LLM_SEMANTIC_PROFILE_ALWAYS_TRIGGER_NAME_TOKENS,
     LLM_SEMANTIC_PROFILE_ALWAYS_TRIGGER_TAGS,
     LLM_SEMANTIC_PROFILE_AMBIGUOUS_TERMS,

@@ -3,38 +3,34 @@ from __future__ import annotations
 from collections import Counter
 from typing import Any
 
+from backend.config.categorical import (
+    ROW_CONTEXT_CATEGORY_TOKENS,
+    ROW_CONTEXT_DEFAULT_LIMIT,
+    ROW_CONTEXT_EARLY_SAMPLE_LIMIT,
+    ROW_CONTEXT_EARLY_SAMPLE_REASON,
+    ROW_CONTEXT_MAX_COLUMNS,
+    ROW_CONTEXT_ORGANIZATION_TOKENS,
+    ROW_CONTEXT_PRIORITY_TAGS,
+    ROW_CONTEXT_RARE_VALUE_COUNT,
+    ROW_CONTEXT_REGION_TOKENS,
+    ROW_CONTEXT_SIGNAL_COUNT_LIMIT,
+    ROW_CONTEXT_SIGNAL_SCORES,
+    ROW_CONTEXT_SIGNAL_TOKENS,
+    ROW_CONTEXT_UNIQUE_VALUE_COUNT,
+    ROW_CONTEXT_USEFUL_TOKENS,
+)
 from backend.domain.policies.categorical import looks_free_text_column
 
 
 def context_columns(columns) -> list[dict[str, Any]]:
-    useful_tokens = (
-        "지역",
-        "시도",
-        "주소",
-        "우편",
-        "시설",
-        "기관",
-        "센터",
-        "소속",
-        "명",
-        "구분",
-        "분류",
-        "인원",
-        "정원",
-        "수용",
-    )
     selected = []
     for column in columns:
         if looks_free_text_column(column):
             continue
         name = f"{column.raw_name} {column.normalized_name}"
-        if any(token in name for token in useful_tokens) or {
-            "address",
-            "name",
-            "enum",
-            "quantity",
-            "count",
-        }.intersection(column.semantic_tags):
+        if any(token in name for token in ROW_CONTEXT_USEFUL_TOKENS) or ROW_CONTEXT_PRIORITY_TAGS.intersection(
+            column.semantic_tags
+        ):
             selected.append(
                 {
                     "raw_name": column.raw_name,
@@ -43,29 +39,30 @@ def context_columns(columns) -> list[dict[str, Any]]:
                     "semantic_profile_label": column.semantic_profile_label,
                 }
             )
-    return selected[:20]
+    return selected[:ROW_CONTEXT_MAX_COLUMNS]
 
 
 def looks_row_context_signal_column(header: str) -> bool:
-    return any(
-        token in header
-        for token in ("지역", "시도", "광역", "센터", "소속", "구분", "분류", "유형", "관리청")
-    )
+    return any(token in header for token in ROW_CONTEXT_SIGNAL_TOKENS)
 
 
 def row_context_signal_score(header: str, count: int) -> int:
-    if count > 2:
+    if count > ROW_CONTEXT_SIGNAL_COUNT_LIMIT:
         return 0
-    if any(token in header for token in ("지역", "시도", "광역")):
-        return 100 if count == 1 else 80
-    if any(token in header for token in ("센터", "소속")):
-        return 90 if count == 1 else 70
-    if any(token in header for token in ("구분", "분류", "유형")):
-        return 60 if count == 1 else 40
-    return 30 if count == 1 else 20
+    if any(token in header for token in ROW_CONTEXT_REGION_TOKENS):
+        return ROW_CONTEXT_SIGNAL_SCORES["region"][count]
+    if any(token in header for token in ROW_CONTEXT_ORGANIZATION_TOKENS):
+        return ROW_CONTEXT_SIGNAL_SCORES["organization"][count]
+    if any(token in header for token in ROW_CONTEXT_CATEGORY_TOKENS):
+        return ROW_CONTEXT_SIGNAL_SCORES["category"][count]
+    return ROW_CONTEXT_SIGNAL_SCORES["default"][count]
 
 
-def context_rows(rows: list[dict[str, str]], headers: list[str], limit: int = 80) -> list[dict[str, Any]]:
+def context_rows(
+    rows: list[dict[str, str]],
+    headers: list[str],
+    limit: int = ROW_CONTEXT_DEFAULT_LIMIT,
+) -> list[dict[str, Any]]:
     value_counts: dict[str, Counter[str]] = {}
     for header in headers:
         if not looks_row_context_signal_column(header):
@@ -87,9 +84,9 @@ def context_rows(rows: list[dict[str, str]], headers: list[str], limit: int = 80
                 continue
             count = counter.get(value, 0)
             score += row_context_signal_score(header, count)
-            if count == 1:
+            if count == ROW_CONTEXT_UNIQUE_VALUE_COUNT:
                 reasons.append(f"{header} has unique value '{value}'")
-            elif count == 2:
+            elif count == ROW_CONTEXT_RARE_VALUE_COUNT:
                 reasons.append(f"{header} has rare value '{value}'")
         if reasons:
             candidates[row_index] = {
@@ -103,15 +100,15 @@ def context_rows(rows: list[dict[str, str]], headers: list[str], limit: int = 80
         candidates.values(),
         key=lambda item: (-int(item.get("candidate_score") or 0), int(item.get("row_index") or 0)),
     )
-    selected: list[dict[str, Any]] = prioritized_candidates[: max(0, limit - 30)]
+    selected: list[dict[str, Any]] = prioritized_candidates[: max(0, limit - ROW_CONTEXT_EARLY_SAMPLE_LIMIT)]
     selected_indexes = {item["row_index"] for item in selected}
-    for row_index, row in enumerate(rows[:30], start=1):
+    for row_index, row in enumerate(rows[:ROW_CONTEXT_EARLY_SAMPLE_LIMIT], start=1):
         if row_index in selected_indexes:
             continue
         selected.append(
             {
                 "row_index": row_index,
-                "candidate_reasons": ["early sample row"],
+                "candidate_reasons": [ROW_CONTEXT_EARLY_SAMPLE_REASON],
                 "values": {header: row.get(header, "") for header in headers},
             }
         )

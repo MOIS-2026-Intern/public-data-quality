@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any
 from xml.etree import ElementTree
 
-from backend.config.constants import (
+from backend.config.uploads import (
     UPLOAD_DATASET_ID_PREFIX,
     UPLOAD_DATASET_TYPE,
     UPLOAD_PROVIDER_CODE,

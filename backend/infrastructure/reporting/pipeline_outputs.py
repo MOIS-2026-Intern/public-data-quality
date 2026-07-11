@@ -5,7 +5,7 @@ import math
 from pathlib import Path
 from typing import Any
 
-from backend.config.constants import QUALITY_DETECTION_RESULTS_CSV_NAME
+from backend.config.reporting import QUALITY_DETECTION_RESULTS_CSV_NAME
 
 from .workbooks import write_error_report
 

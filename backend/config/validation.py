@@ -1,20 +1,5 @@
 from __future__ import annotations
 
-VALIDATION_OUTPUT_DIR_NAME = "validation"
-QUALITY_DETECTION_RESULTS_CSV_NAME = "quality_detection_results.csv"
-
-NORMALIZATION_SYNONYM_PATCHES = {
-    "연락처": "전화번호",
-    "데이터기준일자": "자료기준일자",
-    "데이터기준일": "자료기준일자",
-    "기준일자": "기준일",
-    "소재지도로명주소": "도로명주소",
-    "소재지지번주소": "지번주소",
-    "업소명": "명칭",
-    "CCTV설치여부": "설치여부",
-    "CCTV설치대수": "설치대수",
-}
-
 TAG_RULE_MAP = {
     "date": ["date_domain", "time_sequence_consistency", "precedence_accuracy"],
     "phone": ["number_domain"],
@@ -100,78 +85,3 @@ VALIDATION_CRITERIA = {
         },
     },
 }
-
-DEFAULT_COLUMN_ROUTING_CONFIDENCE = 0.4
-
-LLM_FAST_MODEL = "gpt-4o-mini"
-LLM_STRONG_MODEL = "gpt-4o"
-LLM_DEFAULT_MODEL = LLM_FAST_MODEL
-OPENAI_DEFAULT_API_URL = "https://api.openai.com/v1/chat/completions"
-LLM_REQUEST_TIMEOUT_SECONDS = 120
-LLM_RESOLUTION_CONFIDENCE = 0.78
-LLM_STRONG_FALLBACK_CONFIDENCE = 0.72
-LLM_SEMANTIC_PROFILE_ALWAYS_TRIGGER_TAGS = {"address"}
-LLM_SEMANTIC_PROFILE_ALWAYS_TRIGGER_NAME_TOKENS = {
-    "주소",
-    "소재지",
-    "위치",
-    "설명",
-    "내용",
-    "비고",
-    "사유",
-    "메모",
-    "상세",
-    "특이사항",
-    "조치",
-    "민원",
-    "안내",
-}
-LLM_SEMANTIC_PROFILE_SKIP_TAGS = {
-    "date",
-    "phone",
-    "geo_lat",
-    "geo_lon",
-    "coordinate_pair",
-    "boolean",
-    "amount",
-    "quantity",
-    "count",
-    "rate",
-    "width",
-}
-LLM_SEMANTIC_PROFILE_AMBIGUOUS_TERMS = {
-    "구분",
-    "상태",
-    "코드",
-    "번호",
-    "명",
-    "명칭",
-    "값",
-    "내용",
-    "유형",
-    "종류",
-    "정보",
-    "데이터",
-}
-
-UPLOAD_DATASET_ID_PREFIX = "upload:"
-UPLOAD_PROVIDER_NAME = "사용자 업로드"
-UPLOAD_PROVIDER_CODE = "UPLOAD"
-UPLOAD_DATASET_TYPE = "FILE"
-UPLOAD_SERVICE_TYPE = "UPLOAD"
-UPLOAD_UPDATE_CYCLE = "user_upload"
-
-PROFILE_SAMPLE_ROW_LIMIT = 1000
-PROFILE_SAMPLE_VALUES_LIMIT = 5
-PROFILE_DISTINCT_TRACK_LIMIT = 200
-PROFILE_TOP_VALUE_LIMIT = 30
-PROFILE_TYPE_INFERENCE_THRESHOLD = 0.8
-
-LLM_SEMANTIC_PROFILE_CONFIDENCE_DEFAULT = 0.75
-
-CATEGORICAL_LLM_MIN_DISTINCT = 2
-CATEGORICAL_LLM_MAX_DISTINCT = 30
-CATEGORICAL_LLM_MIN_REPEAT_COUNT = 2
-CATEGORICAL_LLM_CONFIDENCE_THRESHOLD = 0.9
-ADDRESS_DETAIL_LLM_CONFIDENCE_THRESHOLD = 0.95
-ADDRESS_DETAIL_LLM_MAX_CANDIDATES = 40

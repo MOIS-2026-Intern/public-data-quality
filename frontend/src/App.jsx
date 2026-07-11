@@ -40,6 +40,30 @@ function batchSummary(items) {
   };
 }
 
+function analysisPayload(items) {
+  if (items.length === 1) {
+    const [item] = items;
+    const singleResult = item?.ok ? item.result || null : null;
+    const payload = {
+      batch: false,
+      summary: singleResult?.summary || {},
+      results: items,
+      result: singleResult,
+    };
+    if (!singleResult) {
+      payload.error = item?.error || "분석 실패";
+    }
+    return payload;
+  }
+
+  return {
+    batch: true,
+    summary: batchSummary(items),
+    results: items,
+    result: null,
+  };
+}
+
 function compactBatchItemsForReport(items) {
   return items.map((item) => {
     if (!item.ok || !item.result) {
@@ -596,6 +620,7 @@ function BatchDatasetSelector({ items, activeIndex, searchQuery, setSearchQuery,
 function ResultsPanel({ result, loading, progress }) {
   const isBatch = Boolean(result?.batch);
   const batchItems = isBatch ? result.results || [] : [];
+  const singleResult = !isBatch ? result?.result || result?.results?.[0]?.result || null : null;
   const [activeBatchIndex, setActiveBatchIndex] = useState(0);
   const [batchSearchQuery, setBatchSearchQuery] = useState("");
   const activeBatchItem = batchItems[activeBatchIndex] || batchItems[0] || null;
@@ -659,7 +684,7 @@ function ResultsPanel({ result, loading, progress }) {
           ) : null}
         </>
       ) : (
-        <ResultContent result={result} />
+        <ResultContent result={singleResult} />
       )}
     </section>
   );
@@ -776,7 +801,7 @@ function App() {
       }
     }
 
-    if (finalPayload?.error) {
+    if (finalPayload?.error && !finalPayload?.batch) {
       throw new Error(finalPayload.error);
     }
     if (!finalPayload && streamError) {
@@ -859,10 +884,10 @@ function App() {
         const payload = await fetchAnalyzePayload(body, (streamEvent) =>
           handleStreamEvent(transformSequentialFileEvent(streamEvent, fileIndex, totalFiles, datasetFile.name)),
         );
-        if (payload.batch && Array.isArray(payload.results)) {
+        if (Array.isArray(payload.results) && payload.results.length) {
           items.push(...payload.results);
-        } else {
-          items.push({ ok: true, filename: datasetFile.name, result: payload });
+        } else if (payload.result) {
+          items.push({ ok: true, filename: datasetFile.name, result: payload.result });
         }
       } catch (err) {
         const errorMessage = err.message || "분석 실패";
@@ -879,15 +904,8 @@ function App() {
       }
     }
 
-    if (items.length === 1) {
-      if (items[0].ok && items[0].result) {
-        return items[0].result;
-      }
-      throw new Error(items[0].error || "분석 실패");
-    }
-
-    const payload = { batch: true, summary: batchSummary(items), results: items };
-    if (items.some((item) => item.ok && item.result)) {
+    const payload = analysisPayload(items);
+    if (items.length > 1 && items.some((item) => item.ok && item.result)) {
       try {
         const reportResponse = await fetch("/api/reports/batch", {
           method: "POST",

@@ -1,0 +1,8 @@
+from __future__ import annotations
+
+UPLOAD_DATASET_ID_PREFIX = "upload:"
+UPLOAD_PROVIDER_NAME = "사용자 업로드"
+UPLOAD_PROVIDER_CODE = "UPLOAD"
+UPLOAD_DATASET_TYPE = "FILE"
+UPLOAD_SERVICE_TYPE = "UPLOAD"
+UPLOAD_UPDATE_CYCLE = "user_upload"

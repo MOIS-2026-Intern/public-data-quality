@@ -3,22 +3,17 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+from backend.application.dto import PipelineRequest, PipelineState, pipeline_state_update
 from backend.application.ports import PipelineGraphPort
-
-
-PIPELINE_PROGRESS_STEPS = (
-    ("load_reference_data", "입력 형식 확인"),
-    ("normalize_columns", "컬럼 구조 정리"),
-    ("profile_values", "데이터 프로파일링"),
-    ("route_rules", "검증 기준 라우팅"),
-    ("semantic_profile", "컬럼 의미 분석"),
-    ("validate", "규칙 기반 검증"),
-    ("categorical_semantic_validate", "정밀/문맥 검증"),
-    ("propose_repairs", "수정 제안 구성"),
-    ("verify_results", "최종 결과 정리"),
+from backend.config.pipeline import (
+    PIPELINE_PROGRESS_ACTIVE_MESSAGE_SUFFIX,
+    PIPELINE_PROGRESS_DONE_MESSAGE_SUFFIX,
+    PIPELINE_PROGRESS_STEPS,
+    PIPELINE_PROGRESS_STEP_LABELS,
+    PIPELINE_REQUEST_META_CSV_REQUIRED_ERROR,
+    PIPELINE_REQUEST_SOURCE_REQUIRED_ERROR,
+    REPORT_PROGRESS_STEP,
 )
-REPORT_PROGRESS_STEP = ("write_reports", "리포트 생성")
-PIPELINE_PROGRESS_STEP_LABELS = dict(PIPELINE_PROGRESS_STEPS + (REPORT_PROGRESS_STEP,))
 
 
 def _validate_pipeline_request(
@@ -29,9 +24,9 @@ def _validate_pipeline_request(
     uploaded_dataset_csv: str | None,
 ) -> None:
     if not uploaded_dataset_csv and not dataset_id and not dataset_name:
-        raise ValueError("uploaded_dataset_csv, dataset_id, or dataset_name 중 하나는 필요합니다.")
+        raise ValueError(PIPELINE_REQUEST_SOURCE_REQUIRED_ERROR)
     if not uploaded_dataset_csv and not meta_csv:
-        raise ValueError("dataset_id 또는 dataset_name으로 분석하려면 meta_csv가 필요합니다.")
+        raise ValueError(PIPELINE_REQUEST_META_CSV_REQUIRED_ERROR)
 
 
 def _pipeline_input(
@@ -45,18 +40,20 @@ def _pipeline_input(
     llm_model: str | None,
     llm_fast_model: str | None,
     llm_strong_model: str | None,
-) -> dict[str, Any]:
-    return {
-        "dataset_id": dataset_id,
-        "dataset_name": dataset_name,
-        "meta_csv_path": str(Path(meta_csv)) if meta_csv else None,
-        "uploaded_dataset_path": str(Path(uploaded_dataset_csv)) if uploaded_dataset_csv else None,
-        "uploaded_dataset_name": uploaded_dataset_name,
-        "use_llm_agents": use_llm_agents,
-        "llm_model": llm_model,
-        "llm_fast_model": llm_fast_model,
-        "llm_strong_model": llm_strong_model,
-    }
+) -> PipelineState:
+    return pipeline_state_update(
+        request=PipelineRequest(
+            dataset_id=dataset_id,
+            dataset_name=dataset_name,
+            meta_csv_path=str(Path(meta_csv)) if meta_csv else None,
+            uploaded_dataset_path=str(Path(uploaded_dataset_csv)) if uploaded_dataset_csv else None,
+            uploaded_dataset_name=uploaded_dataset_name,
+            use_llm_agents=use_llm_agents,
+            llm_model=llm_model,
+            llm_fast_model=llm_fast_model,
+            llm_strong_model=llm_strong_model,
+        )
+    )
 
 
 def _pipeline_progress_event(
@@ -68,7 +65,11 @@ def _pipeline_progress_event(
     report_step_name: str,
 ) -> dict[str, Any]:
     label = step_labels.get(node_name, node_name)
-    message = f"{label} 중" if node_name == report_step_name else f"{label} 완료"
+    message = (
+        f"{label}{PIPELINE_PROGRESS_ACTIVE_MESSAGE_SUFFIX}"
+        if node_name == report_step_name
+        else f"{label}{PIPELINE_PROGRESS_DONE_MESSAGE_SUFFIX}"
+    )
     return {
         "node": node_name,
         "stage_label": label,

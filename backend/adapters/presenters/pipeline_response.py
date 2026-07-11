@@ -3,6 +3,8 @@ from __future__ import annotations
 import math
 from typing import Any
 
+from backend.application.dto import PipelineData, PipelineResult, pipeline_data, pipeline_result
+
 
 def _json_safe(value: Any) -> Any:
     if isinstance(value, float):
@@ -33,45 +35,42 @@ def _finding_row_values(finding: dict, validation_rows: list[dict[str, str]]) ->
     return row_values
 
 
-def _response_findings_with_row_values(result: dict) -> list[dict]:
-    validation_rows = result.get("validation_rows", [])
-    findings = []
-    for finding in result["findings"]:
+def _response_findings_with_row_values(
+    result_or_findings,
+    validation_rows: list[dict[str, str]] | None = None,
+) -> list[dict]:
+    if validation_rows is None:
+        validation_rows = pipeline_data(result_or_findings).validation_rows
+        findings = pipeline_result(result_or_findings).findings
+    else:
+        findings = result_or_findings
+
+    payloads = []
+    for finding in findings:
         finding_payload = finding.model_dump()
         row_values = _finding_row_values(finding_payload, validation_rows)
         if row_values:
             finding_payload["row_values"] = row_values
-        findings.append(finding_payload)
-    return findings
+        payloads.append(finding_payload)
+    return payloads
 
 
-def _response_from_pipeline_state(result: dict) -> dict:
+def _response_from_pipeline_parts(data: PipelineData, pipeline_result_state: PipelineResult) -> dict:
     return _json_safe(
         {
-            "summary": result["summary"],
-            "preview_headers": result.get("preview_headers", []),
-            "preview_rows": result.get("preview_rows", []),
-            "columns": [column.model_dump() for column in result["columns"]],
-            "findings": _response_findings_with_row_values(result),
-            "agent_traces": [trace.model_dump() for trace in result.get("agent_traces", [])],
+            "summary": pipeline_result_state.summary,
+            "preview_headers": data.preview_headers,
+            "preview_rows": data.preview_rows,
+            "columns": [column.model_dump() for column in data.columns],
+            "findings": _response_findings_with_row_values(
+                pipeline_result_state.findings,
+                data.validation_rows,
+            ),
+            "agent_traces": [trace.model_dump() for trace in pipeline_result_state.agent_traces],
         }
     )
 
 
-def _pipeline_progress_event(
-    node_name: str,
-    step_index: int,
-    step_total: int,
-    *,
-    step_labels: dict[str, str],
-    report_step_name: str,
-) -> dict[str, Any]:
-    label = step_labels.get(node_name, node_name)
-    message = f"{label} 중" if node_name == report_step_name else f"{label} 완료"
-    return {
-        "node": node_name,
-        "stage_label": label,
-        "stage_index": step_index,
-        "stage_total": step_total,
-        "message": message,
-    }
+def _response_from_pipeline_state(result: dict) -> dict:
+    data = pipeline_data(result)
+    return _response_from_pipeline_parts(data, pipeline_result(result))

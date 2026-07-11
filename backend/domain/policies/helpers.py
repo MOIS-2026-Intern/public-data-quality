@@ -4,7 +4,7 @@ import re
 from datetime import datetime
 from typing import Literal, cast
 
-from backend.config.constants import VALIDATION_CRITERIA
+from backend.config.validation import VALIDATION_CRITERIA
 from backend.domain.entities.models import ValidationFinding
 
 Severity = Literal["info", "warning", "error"]

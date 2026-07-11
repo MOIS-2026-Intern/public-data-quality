@@ -16,7 +16,8 @@ from .frontend_routes import register_frontend_routes
 
 
 def create_app() -> Flask:
-    app = Flask(__name__, static_folder=str(Path(__file__).resolve().parent.parent / "frontend" / "dist"))
+    project_root = Path(__file__).resolve().parents[3]
+    app = Flask(__name__, static_folder=str(project_root / "frontend" / "dist"))
     register_error_handlers(app)
     register_api_routes(app)
     register_frontend_routes(app)

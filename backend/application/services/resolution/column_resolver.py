@@ -5,7 +5,7 @@ import re
 from typing import Any
 
 try:
-    from backend.application.dto.pipeline import PipelineState
+    from backend.application.dto import PipelineState, pipeline_data, require_dataset_meta
     from backend.application.ports import JsonLLMPort
     from backend.application.prompts.resolution import (
         RELATIONSHIP_ROUTING_SYSTEM_PROMPT,
@@ -13,16 +13,13 @@ try:
         relationship_routing_prompt,
         schema_routing_prompt,
     )
-    from backend.config.constants import (
-        LLM_STRONG_FALLBACK_CONFIDENCE,
-        TAG_RULE_MAP,
-        VALIDATION_CRITERIA,
-    )
+    from backend.config.llm import LLM_STRONG_FALLBACK_CONFIDENCE
+    from backend.config.validation import TAG_RULE_MAP, VALIDATION_CRITERIA
     from backend.domain.entities.models import ColumnProfile
 except ImportError:  # pragma: no cover
     if (__package__ or "").split(".", 1)[0] != "services":
         raise
-    from backend.application.dto.pipeline import PipelineState
+    from backend.application.dto import PipelineState, pipeline_data, require_dataset_meta
     from backend.application.ports import JsonLLMPort
     from backend.application.prompts.resolution import (
         RELATIONSHIP_ROUTING_SYSTEM_PROMPT,
@@ -30,11 +27,8 @@ except ImportError:  # pragma: no cover
         relationship_routing_prompt,
         schema_routing_prompt,
     )
-    from backend.config.constants import (
-        LLM_STRONG_FALLBACK_CONFIDENCE,
-        TAG_RULE_MAP,
-        VALIDATION_CRITERIA,
-    )
+    from backend.config.llm import LLM_STRONG_FALLBACK_CONFIDENCE
+    from backend.config.validation import TAG_RULE_MAP, VALIDATION_CRITERIA
     from backend.domain.entities.models import ColumnProfile
 from .confidence import coerce_resolution_confidence
 
@@ -187,7 +181,8 @@ class LLMColumnResolver:
         if llm is None:
             return None
 
-        dataset_meta = state["dataset_meta"]
+        dataset_meta = require_dataset_meta(state)
+        data = pipeline_data(state)
         allowed_tags = sorted(TAG_RULE_MAP.keys())
         allowed_rules = sorted(
             {
@@ -196,7 +191,7 @@ class LLMColumnResolver:
                 for rule_id in category["criteria"].keys()
             }
         )
-        all_columns = [candidate.raw_name for candidate in state.get("columns", [])]
+        all_columns = [candidate.raw_name for candidate in data.columns]
         return self._invoke_json_payload(
             schema_routing_prompt(
                 dataset_name=dataset_meta.dataset_name,
@@ -222,7 +217,7 @@ class LLMColumnResolver:
         if llm is None:
             return []
 
-        dataset_meta = state["dataset_meta"]
+        dataset_meta = require_dataset_meta(state)
         allowed_rules = [
             "time_sequence_consistency",
             "precedence_accuracy",

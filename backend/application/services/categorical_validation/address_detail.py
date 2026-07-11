@@ -3,8 +3,14 @@ from __future__ import annotations
 from typing import Any, Callable
 
 try:
-    from backend.application.dto.pipeline import AgentTrace, PipelineState
-    from backend.config.constants import (
+    from backend.application.dto import (
+        AgentTrace,
+        PipelineState,
+        pipeline_data,
+        pipeline_rows,
+        require_dataset_meta,
+    )
+    from backend.config.categorical import (
         ADDRESS_DETAIL_LLM_CONFIDENCE_THRESHOLD,
         ADDRESS_DETAIL_LLM_MAX_CANDIDATES,
     )
@@ -20,8 +26,14 @@ try:
 except ImportError:  # pragma: no cover
     if (__package__ or "").split(".", 1)[0] != "services":
         raise
-    from backend.application.dto.pipeline import AgentTrace, PipelineState
-    from backend.config.constants import (
+    from backend.application.dto import (
+        AgentTrace,
+        PipelineState,
+        pipeline_data,
+        pipeline_rows,
+        require_dataset_meta,
+    )
+    from backend.config.categorical import (
         ADDRESS_DETAIL_LLM_CONFIDENCE_THRESHOLD,
         ADDRESS_DETAIL_LLM_MAX_CANDIDATES,
     )
@@ -79,12 +91,12 @@ def run_llm_address_detail_validation(
     if validator is None or not validator.enabled:
         return findings, traces
 
-    rows = state.get("validation_rows") or state.get("preview_rows", [])
+    rows = pipeline_rows(state)
     if not rows:
         return findings, traces
 
-    dataset_meta = state["dataset_meta"]
-    for column in state["columns"]:
+    dataset_meta = require_dataset_meta(state)
+    for column in pipeline_data(state).columns:
         if not looks_detail_address_column(column):
             continue
 

@@ -3,53 +3,39 @@ from __future__ import annotations
 import json
 from collections import Counter
 
-from backend.application.dto.pipeline import PipelineState
+from backend.application.dto import (
+    PipelineState,
+    merge_state_updates,
+    pipeline_data,
+    pipeline_request,
+    pipeline_result,
+    require_dataset_meta,
+    update_pipeline_data,
+    update_pipeline_result,
+)
+from backend.config.pipeline import VERIFICATION_STEP_NAME
+from backend.config.verification import (
+    DETERMINISTIC_ISSUE_RULE_IDS,
+    DETERMINISTIC_TRUNCATION_DETECTORS,
+    STRONG_LLM_ISSUE_RULE_IDS,
+    VERIFICATION_STRONG_LLM_CONFIDENCE_THRESHOLD,
+)
 from .tracing import pipeline_trace
-
-VERIFICATION_STEP_NAME = "verifier"
-
-# Final reported issues must either come from deterministic rule-based validators,
-# count-confirmed as a one-to-one truncation, or be produced by the strong LLM stage.
-DETERMINISTIC_ISSUE_RULE_IDS = {
-    "garbled_text",
-    "whitespace_issue",
-    "special_character_issue",
-    "required_value",
-    "duplicate_data",
-    "date_domain",
-    "number_domain",
-    "boolean_domain",
-    "amount_domain",
-    "quantity_domain",
-    "rate_domain",
-    "time_sequence_consistency",
-    "precedence_accuracy",
-    "logical_consistency",
-    "calculation_formula",
-    "reference_relation",
-    "address_region_prefix_mismatch",
-}
-STRONG_LLM_ISSUE_RULE_IDS = {
-    "boolean_domain",
-    "categorical_value_out_of_domain",
-    "categorical_value_truncated",
-    "date_domain",
-    "logical_consistency",
-}
-DETERMINISTIC_TRUNCATION_DETECTORS = {
-    "detector:truncated_address",
-}
 
 
 def verify_results(state: PipelineState) -> PipelineState:
+    data = pipeline_data(state)
+    request = pipeline_request(state)
+    result_state = pipeline_result(state)
+    dataset_meta = require_dataset_meta(state)
     repairs = 0
     manual_review = 0
-    traces = list(state.get("agent_traces", []))
-    raw_findings = state.get("findings", [])
+    traces = list(result_state.agent_traces)
+    raw_findings = result_state.findings
     findings = _verified_findings(raw_findings)
     suppressed_count = _suppressible_issue_count(raw_findings) - _issue_occurrence_count(findings)
 
-    for column in state["columns"]:
+    for column in data.columns:
         if column.repair_suggestion:
             repairs += 1
             column.verification_notes.append("수정 제안 생성")
@@ -68,11 +54,14 @@ def verify_results(state: PipelineState) -> PipelineState:
         pipeline_trace(
             VERIFICATION_STEP_NAME,
             action="verify_results",
-            target=state["dataset_meta"].dataset_id,
+            target=dataset_meta.dataset_id,
             detail=json.dumps(summary, ensure_ascii=False),
         )
     )
-    return {"summary": summary, "columns": state["columns"], "findings": findings, "agent_traces": traces}
+    return merge_state_updates(
+        update_pipeline_data(state, columns=data.columns),
+        update_pipeline_result(state, summary=summary, findings=findings, agent_traces=traces),
+    )
 
 
 def _verified_findings(findings: list) -> list:
@@ -194,7 +183,7 @@ def _is_strong_llm_issue(finding) -> bool:
     if "stage:strong" not in evidence:
         return False
     confidence = _evidence_float(evidence, "confidence")
-    return confidence is not None and confidence >= 0.90
+    return confidence is not None and confidence >= VERIFICATION_STRONG_LLM_CONFIDENCE_THRESHOLD
 
 
 def _evidence_int(evidence: list[str], key: str) -> int | None:
@@ -260,12 +249,15 @@ def _build_quality_summary(
     manual_review: int,
     suppressed_count: int,
 ) -> dict:
+    data = pipeline_data(state)
+    request = pipeline_request(state)
+    dataset_meta = require_dataset_meta(state)
     return {
-        "dataset_id": state["dataset_meta"].dataset_id,
-        "dataset_name": state["dataset_meta"].dataset_name,
-        "provider_name": state["dataset_meta"].provider_name,
-        "column_count": len(state["columns"]),
-        "row_count": state["dataset_meta"].total_rows,
+        "dataset_id": dataset_meta.dataset_id,
+        "dataset_name": dataset_meta.dataset_name,
+        "provider_name": dataset_meta.provider_name,
+        "column_count": len(data.columns),
+        "row_count": dataset_meta.total_rows,
         "repair_suggestion_count": repairs,
         "manual_review_count": manual_review,
         "finding_count": sum(_finding_occurrence_count(finding) for finding in findings),
@@ -279,5 +271,5 @@ def _build_quality_summary(
         "false_positive_policy": "deterministic_rule_or_count_mapped_or_strong_llm",
         "finding_breakdown": _finding_occurrence_breakdown(findings, "category_label"),
         "finding_type_breakdown": _finding_occurrence_breakdown(findings, "display_label"),
-        "llm_agents_enabled": bool(state.get("use_llm_agents")),
+        "llm_agents_enabled": request.use_llm_agents,
     }

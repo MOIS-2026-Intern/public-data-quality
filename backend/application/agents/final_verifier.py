@@ -1,6 +1,15 @@
 from __future__ import annotations
 
-from backend.application.dto.pipeline import PipelineState
+from backend.application.dto import (
+    PipelineState,
+    merge_state_updates,
+    pipeline_data,
+    pipeline_request,
+    pipeline_result,
+    pipeline_rows,
+    require_dataset_meta,
+    update_pipeline_result,
+)
 from backend.application.services.agent_base import BaseAgent
 from backend.application.services.verification.final_finding_verifier import (
     LLMFinalFindingVerifier,
@@ -23,9 +32,12 @@ class FinalFindingVerificationAgent(BaseAgent):
         self.verifier = verifier
 
     def run(self, state: PipelineState) -> PipelineState:
-        traces = list(state.get("agent_traces", []))
-        findings = list(state.get("findings", []))
-        use_llm = bool(state.get("use_llm_agents")) and self.verifier is not None and self.verifier.enabled
+        request = pipeline_request(state)
+        data = pipeline_data(state)
+        result = pipeline_result(state)
+        traces = list(result.agent_traces)
+        findings = list(result.findings)
+        use_llm = request.use_llm_agents and self.verifier is not None and self.verifier.enabled
         issue_pairs = [
             (index, finding)
             for index, finding in enumerate(findings)
@@ -39,19 +51,20 @@ class FinalFindingVerificationAgent(BaseAgent):
                     detail=f"llm_disabled_or_unavailable; issue_findings={len(issue_pairs)}",
                 )
             )
-            return {"findings": findings, "agent_traces": traces}
+            return update_pipeline_result(state, findings=findings, agent_traces=traces)
 
-        rows = state.get("validation_rows") or state.get("preview_rows", [])
+        rows = pipeline_rows(state)
         candidates = _finding_candidates(issue_pairs, rows)
         if not candidates:
             traces.append(self.trace(action="final_verify_findings", detail="issue_findings=0"))
-            return {"findings": findings, "agent_traces": traces}
+            return update_pipeline_result(state, findings=findings, agent_traces=traces)
 
         limited_candidates = candidates[:MAX_FINAL_VERIFICATION_CANDIDATES]
         limited_candidate_ids = {str(candidate["id"]) for candidate in limited_candidates}
+        dataset_meta = require_dataset_meta(state)
         payload = self.verifier.verify(
-            dataset_name=state["dataset_meta"].dataset_name,
-            provider_name=state["dataset_meta"].provider_name,
+            dataset_name=dataset_meta.dataset_name,
+            provider_name=dataset_meta.provider_name,
             candidates=limited_candidates,
         )
         if not payload:
@@ -65,7 +78,7 @@ class FinalFindingVerificationAgent(BaseAgent):
                     ),
                 )
             )
-            return {"findings": findings, "agent_traces": traces}
+            return update_pipeline_result(state, findings=findings, agent_traces=traces)
 
         decisions = _verification_decisions(payload)
         verified_findings: list[ValidationFinding] = []
@@ -102,4 +115,4 @@ class FinalFindingVerificationAgent(BaseAgent):
                 ),
             )
         )
-        return {"findings": verified_findings, "agent_traces": traces}
+        return update_pipeline_result(state, findings=verified_findings, agent_traces=traces)

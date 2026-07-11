@@ -2,18 +2,30 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Any, TypedDict
 
 from flask import abort
 
+from backend.config.pipeline import PIPELINE_PROGRESS_STEPS, REPORT_PROGRESS_STEP
 from backend.infrastructure.io.sources import PreparedDataset
 from backend.infrastructure.reporting.workbooks import write_batch_error_report
 
-from .pipeline_service import (
-    PIPELINE_PROGRESS_STEPS,
-    REPORT_PROGRESS_STEP,
-    run_pipeline,
-    validation_output_dir,
-)
+from .pipeline_service import run_pipeline, validation_output_dir
+
+
+class AnalysisItem(TypedDict, total=False):
+    ok: bool
+    filename: str
+    result: dict[str, Any]
+    error: str
+
+
+class AnalysisPayload(TypedDict, total=False):
+    batch: bool
+    summary: dict[str, Any]
+    results: list[AnalysisItem]
+    result: dict[str, Any] | None
+    error: str
 
 
 def _analyze_prepared_dataset(
@@ -36,34 +48,73 @@ def _analyze_prepared_dataset(
     )
 
 
-def _batch_summary(items: list[dict]) -> dict:
-    successful_results = [item["result"] for item in items if item.get("ok") and item.get("result")]
-    failed_count = sum(1 for item in items if not item.get("ok"))
+def _batch_summary(items: list[AnalysisItem]) -> dict[str, Any]:
+    success_count = 0
+    failed_count = 0
+    row_count = 0
+    finding_count = 0
+    issue_finding_count = 0
+    manual_review_finding_count = 0
+
+    for item in items:
+        result = item.get("result")
+        if item.get("ok") and isinstance(result, dict):
+            summary = result.get("summary") or {}
+            success_count += 1
+            row_count += int(summary.get("row_count") or 0)
+            finding_count += int(summary.get("finding_count") or 0)
+            issue_finding_count += int(summary.get("issue_finding_count") or 0)
+            manual_review_finding_count += int(summary.get("manual_review_finding_count") or 0)
+            continue
+        failed_count += 1
+
     return {
         "dataset_count": len(items),
-        "success_count": len(successful_results),
+        "success_count": success_count,
         "failed_count": failed_count,
-        "row_count": sum(int(result.get("summary", {}).get("row_count") or 0) for result in successful_results),
-        "finding_count": sum(int(result.get("summary", {}).get("finding_count") or 0) for result in successful_results),
-        "issue_finding_count": sum(
-            int(result.get("summary", {}).get("issue_finding_count") or 0) for result in successful_results
-        ),
-        "manual_review_finding_count": sum(
-            int(result.get("summary", {}).get("manual_review_finding_count") or 0) for result in successful_results
-        ),
+        "row_count": row_count,
+        "finding_count": finding_count,
+        "issue_finding_count": issue_finding_count,
+        "manual_review_finding_count": manual_review_finding_count,
     }
 
 
-def _batch_payload(items: list[dict]) -> dict:
-    summary = _batch_summary(items)
-    if summary["success_count"]:
-        summary["error_report_xlsx"] = str(
-            write_batch_error_report(
-                items=items,
-                output_dir=validation_output_dir(),
-            )
-        )
-    return {"batch": True, "summary": summary, "results": items}
+def _analysis_payload(
+    items: list[AnalysisItem],
+    *,
+    summary: dict[str, Any] | None = None,
+) -> AnalysisPayload:
+    is_batch = len(items) != 1
+    if not is_batch:
+        single_item = items[0] if items else {}
+        single_result = single_item.get("result") if isinstance(single_item.get("result"), dict) else None
+        payload: AnalysisPayload = {
+            "batch": False,
+            "summary": (single_result.get("summary") or {}) if isinstance(single_result, dict) else {},
+            "results": items,
+            "result": single_result,
+        }
+        if not single_result:
+            payload["error"] = str(single_item.get("error") or "분석 실패")
+        return payload
+
+    aggregate_summary = summary or _batch_summary(items)
+    if aggregate_summary["success_count"]:
+        aggregate_summary = {
+            **aggregate_summary,
+            "error_report_xlsx": str(
+                write_batch_error_report(
+                    items=items,
+                    output_dir=validation_output_dir(),
+                )
+            ),
+        }
+    return {
+        "batch": True,
+        "summary": aggregate_summary,
+        "results": items,
+        "result": None,
+    }
 
 
 def _progress_event(event_type: str, **payload) -> bytes:

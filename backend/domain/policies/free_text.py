@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import re
 
-from backend.config.constants import FREE_TEXT_COLUMN_NAME_TOKENS
+from backend.config.validation import FREE_TEXT_COLUMN_NAME_TOKENS
 from backend.domain.entities.models import ColumnProfile
 
 FREE_FORMAT = "free_format"

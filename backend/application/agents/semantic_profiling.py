@@ -1,6 +1,14 @@
 from __future__ import annotations
 
-from backend.application.dto.pipeline import PipelineState
+from backend.application.dto import (
+    PipelineState,
+    merge_state_updates,
+    pipeline_data,
+    pipeline_request,
+    pipeline_result,
+    update_pipeline_data,
+    update_pipeline_result,
+)
 from backend.application.services.agent_base import BaseAgent
 from backend.application.services.resolution.semantic_profiler import LLMSemanticProfiler
 from backend.domain.policies import semantic_profile_llm_reasons
@@ -18,11 +26,13 @@ class SemanticProfilingAgent(BaseAgent):
         return self.semantic_profiler.last_error, self.semantic_profiler.last_response_preview
 
     def run(self, state: PipelineState) -> PipelineState:
-        traces = list(state.get("agent_traces", []))
+        traces = list(pipeline_result(state).agent_traces)
+        data = pipeline_data(state)
+        request = pipeline_request(state)
         updated = []
-        use_llm = bool(state.get("use_llm_agents")) and self.semantic_profiler is not None
+        use_llm = request.use_llm_agents and self.semantic_profiler is not None
 
-        for column in state["columns"]:
+        for column in data.columns:
             llm_reasons = semantic_profile_llm_reasons(column)
             needs_llm = use_llm and bool(llm_reasons)
             llm_attempted = False
@@ -53,4 +63,7 @@ class SemanticProfilingAgent(BaseAgent):
             )
             updated.append(column)
 
-        return {"columns": updated, "agent_traces": traces}
+        return merge_state_updates(
+            update_pipeline_data(state, columns=updated),
+            update_pipeline_result(state, agent_traces=traces),
+        )

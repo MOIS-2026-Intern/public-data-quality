@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from backend.config.constants import LLM_RESOLUTION_CONFIDENCE
+from backend.config.llm import LLM_RESOLUTION_CONFIDENCE
 
 
 def coerce_resolution_confidence(value: Any) -> float:

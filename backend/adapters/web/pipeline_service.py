@@ -3,14 +3,17 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-from backend.adapters.presenters.pipeline_response import _response_from_pipeline_state
+from backend.adapters.presenters.pipeline_response import _response_from_pipeline_parts
+from backend.application.dto import pipeline_data, pipeline_result
 from backend.application.use_cases.pipeline_runner import (
-    PIPELINE_PROGRESS_STEPS,
-    REPORT_PROGRESS_STEP,
     run_pipeline_state,
     stream_pipeline_state,
 )
-from backend.config.constants import VALIDATION_OUTPUT_DIR_NAME
+from backend.config.pipeline import (
+    PIPELINE_PROGRESS_STEPS,
+    REPORT_PROGRESS_STEP,
+)
+from backend.config.reporting import VALIDATION_OUTPUT_DIR_NAME
 from backend.infrastructure.orchestration.graph import build_graph
 from backend.infrastructure.reporting.pipeline_outputs import attach_report_paths
 
@@ -53,9 +56,10 @@ def run_pipeline(
         llm_fast_model=llm_fast_model,
         llm_strong_model=llm_strong_model,
     )
+    data = pipeline_data(result_state)
     return attach_report_paths(
-        response=_response_from_pipeline_state(result_state),
-        validation_rows=result_state.get("validation_rows", []),
+        response=_response_from_pipeline_parts(data, pipeline_result(result_state)),
+        validation_rows=data.validation_rows,
         output_dir=validation_output_dir(),
     )
 
@@ -96,11 +100,12 @@ def stream_pipeline(
             continue
 
         result_state = pipeline_event.get("result") or {}
+        data = pipeline_data(result_state)
         yield {
             "kind": "result",
             "result": attach_report_paths(
-                response=_response_from_pipeline_state(result_state),
-                validation_rows=result_state.get("validation_rows", []),
+                response=_response_from_pipeline_parts(data, pipeline_result(result_state)),
+                validation_rows=data.validation_rows,
                 output_dir=validation_output_dir(),
             ),
         }

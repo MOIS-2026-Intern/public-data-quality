@@ -8,7 +8,7 @@ from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
-from backend.config.constants import LLM_DEFAULT_MODEL, LLM_REQUEST_TIMEOUT_SECONDS, OPENAI_DEFAULT_API_URL
+from backend.config.llm import LLM_DEFAULT_MODEL, LLM_REQUEST_TIMEOUT_SECONDS, OPENAI_DEFAULT_API_URL
 
 try:
     from dotenv import load_dotenv

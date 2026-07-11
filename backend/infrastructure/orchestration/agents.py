@@ -16,7 +16,7 @@ from backend.application.services import (
     LLMFinalFindingVerifier,
     LLMSemanticProfiler,
 )
-from backend.config.constants import LLM_FAST_MODEL, LLM_STRONG_MODEL
+from backend.config.llm import LLM_FAST_MODEL, LLM_STRONG_MODEL
 from backend.infrastructure.io.dataset_gateway import FilesystemDatasetGateway
 from backend.infrastructure.llm import ChatLLMClient
 

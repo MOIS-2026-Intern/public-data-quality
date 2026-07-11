@@ -1,14 +1,32 @@
 from __future__ import annotations
 
 try:
-    from backend.application.dto.pipeline import PipelineState
+    from backend.application.dto import (
+        PipelineState,
+        merge_state_updates,
+        pipeline_request,
+        pipeline_result,
+        require_dataset_meta,
+        update_pipeline_data,
+        update_pipeline_request,
+        update_pipeline_result,
+    )
     from backend.application.ports import DatasetGatewayPort
     from backend.domain.entities.models import ColumnProfile
     from backend.domain.services.normalization import build_column_profile
 except ImportError:  # pragma: no cover
     if (__package__ or "").split(".", 1)[0] != "agents":
         raise
-    from backend.application.dto.pipeline import PipelineState
+    from backend.application.dto import (
+        PipelineState,
+        merge_state_updates,
+        pipeline_request,
+        pipeline_result,
+        require_dataset_meta,
+        update_pipeline_data,
+        update_pipeline_request,
+        update_pipeline_result,
+    )
     from backend.application.ports import DatasetGatewayPort
     from backend.domain.entities.models import ColumnProfile
     from backend.domain.services.normalization import build_column_profile
@@ -22,44 +40,47 @@ class ReferenceLoaderAgent(BaseAgent):
         self.dataset_gateway = dataset_gateway
 
     def run(self, state: PipelineState) -> PipelineState:
-        if state.get("uploaded_dataset_path"):
+        request = pipeline_request(state)
+        traces = list(pipeline_result(state).agent_traces)
+        if request.uploaded_dataset_path:
             dataset_meta = self.dataset_gateway.load_uploaded_dataset_meta(
-                state["uploaded_dataset_path"],
-                dataset_name=state.get("uploaded_dataset_name") or state.get("dataset_name"),
+                request.uploaded_dataset_path,
+                dataset_name=request.uploaded_dataset_name or request.dataset_name,
             )
         else:
-            meta_csv_path = state.get("meta_csv_path")
+            meta_csv_path = request.meta_csv_path
             if not meta_csv_path:
                 raise ValueError("meta_csv_path is required when uploaded_dataset_path is not provided.")
             dataset_meta = self.dataset_gateway.load_dataset_meta(
                 meta_csv_path,
-                dataset_id=state.get("dataset_id"),
-                dataset_name=state.get("dataset_name"),
+                dataset_id=request.dataset_id or None,
+                dataset_name=request.dataset_name or None,
             )
-        traces = list(state.get("agent_traces", []))
         traces.append(
             self.trace(
                 action="load_reference_data",
                 target=dataset_meta.dataset_id,
                 detail=(
-                    f"dataset={dataset_meta.dataset_name}, uploaded={bool(state.get('uploaded_dataset_path'))}"
+                    f"dataset={dataset_meta.dataset_name}, uploaded={bool(request.uploaded_dataset_path)}"
                 ),
             )
         )
-        return {
-            "dataset_id": dataset_meta.dataset_id,
-            "dataset_name": dataset_meta.dataset_name,
-            "dataset_meta": dataset_meta,
-            "findings": [],
-            "agent_traces": traces,
-        }
+        return merge_state_updates(
+            update_pipeline_request(
+                state,
+                dataset_id=dataset_meta.dataset_id,
+                dataset_name=dataset_meta.dataset_name,
+            ),
+            update_pipeline_data(state, dataset_meta=dataset_meta),
+            update_pipeline_result(state, findings=[], agent_traces=traces),
+        )
 
 
 class SchemaParsingAgent(BaseAgent):
     name = "schema_parser"
 
     def run(self, state: PipelineState) -> PipelineState:
-        dataset_meta = state["dataset_meta"]
+        dataset_meta = require_dataset_meta(state)
         columns: list[ColumnProfile] = []
 
         for raw_name in dataset_meta.request_fields:
@@ -67,7 +88,7 @@ class SchemaParsingAgent(BaseAgent):
         for raw_name in dataset_meta.response_fields:
             columns.append(build_column_profile(raw_name, "response"))
 
-        traces = list(state.get("agent_traces", []))
+        traces = list(pipeline_result(state).agent_traces)
         traces.append(
             self.trace(
                 action="parse_schema",
@@ -75,4 +96,7 @@ class SchemaParsingAgent(BaseAgent):
                 detail=f"columns={len(columns)}",
             )
         )
-        return {"columns": columns, "agent_traces": traces}
+        return merge_state_updates(
+            update_pipeline_data(state, columns=columns),
+            update_pipeline_result(state, agent_traces=traces),
+        )

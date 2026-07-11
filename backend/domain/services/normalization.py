@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import re
 
-from backend.config.constants import DEFAULT_COLUMN_ROUTING_CONFIDENCE, NORMALIZATION_SYNONYM_PATCHES
+from backend.config.normalization import DEFAULT_COLUMN_ROUTING_CONFIDENCE, NORMALIZATION_SYNONYM_PATCHES
 from backend.domain.entities.models import ColumnProfile
 
 PARENS_RE = re.compile(r"\(([^()]*)\)")

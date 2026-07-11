@@ -3,6 +3,13 @@ from __future__ import annotations
 import re
 from typing import Any
 
+from backend.config.verification import (
+    FINAL_VERIFICATION_CONFIDENCE_THRESHOLD,
+    MAX_FINAL_VERIFICATION_CANDIDATES,
+    MAX_FINAL_VERIFICATION_ROWS_PER_FINDING,
+    MAX_FINAL_VERIFICATION_VALUE_LENGTH,
+)
+
 try:
     from backend.application.ports import JsonLLMPort
     from backend.application.prompts.verification import (
@@ -21,11 +28,6 @@ except ImportError:  # pragma: no cover
     from backend.domain.entities.models import ValidationFinding
 
 from ..json_utils import parse_json_content
-
-FINAL_VERIFICATION_CONFIDENCE_THRESHOLD = 0.90
-MAX_FINAL_VERIFICATION_CANDIDATES = 80
-MAX_FINAL_VERIFICATION_ROWS_PER_FINDING = 12
-MAX_FINAL_VERIFICATION_VALUE_LENGTH = 160
 
 
 class LLMFinalFindingVerifier:
