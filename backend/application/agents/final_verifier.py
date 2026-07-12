@@ -10,7 +10,7 @@ from backend.application.dto import (
     require_dataset_meta,
     update_pipeline_result,
 )
-from backend.application.services.agent_base import BaseAgent
+from backend.application.agents.base import BaseAgent
 from backend.application.services.verification.final_finding_verifier import (
     LLMFinalFindingVerifier,
     MAX_FINAL_VERIFICATION_CANDIDATES,

@@ -12,7 +12,7 @@ from backend.application.services.verification.final_finding_verifier import (
     _finding_candidates,
 )
 from backend.domain.entities.models import DatasetMeta
-from backend.domain.policies.helpers import build_finding
+from backend.domain.policies.shared.helpers import build_finding
 
 
 class FakeVerifier:

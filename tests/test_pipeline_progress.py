@@ -3,13 +3,13 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from backend.application.dto import PipelineExecutionRequest
 from backend.application.use_cases.pipeline_runner import stream_pipeline_state
 
 
-class _FakeGraph:
-    def stream(self, graph_input, *, stream_mode):
+class _FakeExecutor:
+    def stream_updates(self, graph_input):
         assert graph_input["uploaded_dataset_path"] == "uploaded.csv"
-        assert stream_mode == "updates"
         for node_name in (
             "load_reference_data",
             "normalize_columns",
@@ -24,15 +24,15 @@ class _FakeGraph:
         ):
             yield {node_name: {}}
 
-    def invoke(self, graph_input):
+    def run(self, graph_input):
         return graph_input
 
 
 def test_stream_pipeline_state_emits_progress_for_final_finding_verification() -> None:
     events = list(
         stream_pipeline_state(
-            _FakeGraph(),
-            uploaded_dataset_csv="uploaded.csv",
+            _FakeExecutor(),
+            PipelineExecutionRequest(uploaded_dataset_csv="uploaded.csv"),
         )
     )
 

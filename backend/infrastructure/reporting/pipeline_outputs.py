@@ -8,6 +8,7 @@ from typing import Any
 from backend.config.reporting import (
     DETECTION_MATRIX_METADATA_FIELDS,
     QUALITY_DETECTION_RESULTS_CSV_NAME,
+    RESULTS_DIR_NAME,
 )
 
 from .artifacts import unique_artifact_path
@@ -97,7 +98,8 @@ def _issue_cells(result: dict, column_headers: list[tuple[str, str]]) -> set[tup
 
 def write_detection_result_csv(result: dict, output_dir: Path) -> str:
     summary = result["summary"]
-    output_path = unique_artifact_path(output_dir, QUALITY_DETECTION_RESULTS_CSV_NAME)
+    results_dir = output_dir / RESULTS_DIR_NAME
+    output_path = unique_artifact_path(results_dir, QUALITY_DETECTION_RESULTS_CSV_NAME)
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
     column_headers = _detection_column_headers(result)

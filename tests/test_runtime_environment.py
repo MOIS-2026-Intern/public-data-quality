@@ -4,6 +4,7 @@ import sys
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import backend.infrastructure.orchestration.agents as agents_module
+from backend.application.dto import PipelineExecutionRequest
 
 
 def test_build_agents_loads_runtime_environment_only_when_llm_is_enabled(monkeypatch) -> None:
@@ -24,8 +25,8 @@ def test_build_agents_loads_runtime_environment_only_when_llm_is_enabled(monkeyp
     monkeypatch.setattr(agents_module, "ensure_runtime_environment", fake_ensure_runtime_environment)
     monkeypatch.setattr(agents_module, "ChatLLMClient", FakeClient)
 
-    agents_module.build_agents(use_llm_agents=False)
-    agents_module.build_agents(use_llm_agents=True)
+    agents_module.build_agents(PipelineExecutionRequest(use_llm_agents=False))
+    agents_module.build_agents(PipelineExecutionRequest(use_llm_agents=True))
 
     assert env_calls["count"] == 1
     assert client_calls["count"] == 2

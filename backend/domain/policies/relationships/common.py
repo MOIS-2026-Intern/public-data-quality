@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from backend.config.relationships import NUMERIC_PAIR_BASE_STEM_TOKENS
 from backend.domain.entities.models import ColumnProfile
+from ..shared.settings import NUMERIC_PAIR_BASE_STEM_TOKENS
 
 
 def base_stem(name: str) -> str:

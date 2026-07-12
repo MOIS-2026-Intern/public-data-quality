@@ -4,7 +4,8 @@ from typing import Any
 
 from backend.domain.entities.models import ColumnProfile, ValidationFinding
 from ..columns import looks_numeric_column
-from ..helpers import build_finding, parse_number
+from ..shared.findings import build_finding
+from ..shared.parsing import parse_number
 from .common import candidate_groups, is_related_numeric_pair
 
 

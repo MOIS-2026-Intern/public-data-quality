@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+from importlib.util import find_spec
 from pathlib import Path
 
-try:
+if find_spec("dotenv") is not None:  # pragma: no branch
     from dotenv import load_dotenv
-except ImportError:  # pragma: no cover
+else:  # pragma: no cover
     load_dotenv = None
 
 _ENV_LOADED = False

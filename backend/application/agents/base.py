@@ -1,11 +1,6 @@
 from __future__ import annotations
 
-try:
-    from backend.application.dto.pipeline import AgentTrace
-except ImportError:  # pragma: no cover
-    if (__package__ or "").split(".", 1)[0] != "services":
-        raise
-    from backend.application.dto.pipeline import AgentTrace
+from backend.application.dto.pipeline import AgentTrace
 
 
 class BaseAgent:

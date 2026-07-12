@@ -2,32 +2,18 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-try:
-    from backend.application.dto import (
-        PipelineState,
-        merge_state_updates,
-        pipeline_data,
-        pipeline_request,
-        pipeline_result,
-        update_pipeline_data,
-        update_pipeline_result,
-    )
-    from backend.domain.entities.models import ColumnProfile
-except ImportError:  # pragma: no cover
-    if (__package__ or "").split(".", 1)[0] != "agents":
-        raise
-    from backend.application.dto import (
-        PipelineState,
-        merge_state_updates,
-        pipeline_data,
-        pipeline_request,
-        pipeline_result,
-        update_pipeline_data,
-        update_pipeline_result,
-    )
-    from backend.domain.entities.models import ColumnProfile
-from backend.application.services.agent_base import BaseAgent
+from backend.application.agents.base import BaseAgent
+from backend.application.dto import (
+    PipelineState,
+    merge_state_updates,
+    pipeline_data,
+    pipeline_request,
+    pipeline_result,
+    update_pipeline_data,
+    update_pipeline_result,
+)
 from backend.application.services.resolution.rule_routing import apply_llm_route, apply_rule_fallback
+from backend.domain.entities.models import ColumnProfile
 
 if TYPE_CHECKING:
     from backend.application.services.resolution.column_resolver import LLMColumnResolver

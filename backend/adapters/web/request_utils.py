@@ -8,6 +8,8 @@ from typing import Any
 from flask import request
 from werkzeug.datastructures import FileStorage
 
+from backend.application.dto import PipelineExecutionRequest
+
 
 def _uploaded_display_filename(filename: str | None) -> str:
     raw_filename = filename or "uploaded_dataset.csv"
@@ -162,7 +164,7 @@ def _public_data_api_params(payload: dict[str, Any]) -> dict[str, str]:
     return params
 
 
-def _request_options(payload: dict[str, Any]) -> dict[str, Any]:
+def _request_options(payload: dict[str, Any]) -> PipelineExecutionRequest:
     openai_api_key = str(_first_payload_value(payload, "openai_api_key") or "").strip() or None
     if openai_api_key is not None:
         try:
@@ -173,10 +175,10 @@ def _request_options(payload: dict[str, Any]) -> dict[str, Any]:
                 "sk-로 시작하는 API Key를 그대로 입력하세요."
             ) from exc
 
-    return {
-        "use_llm_agents": _parse_bool(_first_payload_value(payload, "use_llm_agents"), default=False),
-        "openai_api_key": openai_api_key,
-        "llm_model": _first_payload_value(payload, "llm_model") or None,
-        "llm_fast_model": _first_payload_value(payload, "llm_fast_model") or None,
-        "llm_strong_model": _first_payload_value(payload, "llm_strong_model") or None,
-    }
+    return PipelineExecutionRequest(
+        use_llm_agents=_parse_bool(_first_payload_value(payload, "use_llm_agents"), default=False),
+        openai_api_key=openai_api_key,
+        llm_model=_first_payload_value(payload, "llm_model") or None,
+        llm_fast_model=_first_payload_value(payload, "llm_fast_model") or None,
+        llm_strong_model=_first_payload_value(payload, "llm_strong_model") or None,
+    )

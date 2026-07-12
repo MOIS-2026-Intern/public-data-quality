@@ -6,12 +6,11 @@ from typing import Any, TypedDict
 
 from flask import abort
 
+from backend.application.dto import PipelineExecutionRequest, PreparedDataset
 from backend.config.pipeline import PIPELINE_PROGRESS_STEPS, REPORT_PROGRESS_STEP
-from backend.infrastructure.io.sources import PreparedDataset
-from backend.infrastructure.reporting.artifacts import public_download_name
-from backend.infrastructure.reporting.pipeline_outputs import attach_report_paths
 
-from .pipeline_service import PipelineRunResult, run_pipeline, validation_output_dir
+from .dependencies import WebAdapterDependencies, default_web_dependencies
+from .pipeline_service import PipelineRunResult, run_pipeline
 
 
 class AnalysisItem(TypedDict, total=False):
@@ -29,34 +28,42 @@ class AnalysisPayload(TypedDict, total=False):
     error: str
 
 
+def _resolve_dependencies(dependencies: WebAdapterDependencies | None) -> WebAdapterDependencies:
+    return dependencies or default_web_dependencies()
+
+
 def _analyze_prepared_dataset(
     *,
     dataset: PreparedDataset,
-    use_llm_agents: bool,
-    openai_api_key: str | None,
-    llm_model: str | None,
-    llm_fast_model: str | None,
-    llm_strong_model: str | None,
+    request: PipelineExecutionRequest,
+    dependencies: WebAdapterDependencies | None = None,
 ) -> dict:
+    resolved_dependencies = _resolve_dependencies(dependencies)
     return _analysis_result_payload(
         run_pipeline(
-            uploaded_dataset_csv=str(dataset.path),
-            uploaded_dataset_name=dataset.display_name,
-            use_llm_agents=use_llm_agents,
-            openai_api_key=openai_api_key,
-            llm_model=llm_model,
-            llm_fast_model=llm_fast_model,
-            llm_strong_model=llm_strong_model,
-        )
+            request=request.model_copy(
+                update={
+                    "uploaded_dataset_csv": str(dataset.path),
+                    "uploaded_dataset_name": dataset.display_name,
+                }
+            ),
+            dependencies=resolved_dependencies,
+        ),
+        dependencies=resolved_dependencies,
     )
 
 
-def _analysis_result_payload(result: PipelineRunResult | dict[str, Any]) -> dict[str, Any]:
+def _analysis_result_payload(
+    result: PipelineRunResult | dict[str, Any],
+    *,
+    dependencies: WebAdapterDependencies | None = None,
+) -> dict[str, Any]:
+    resolved_dependencies = _resolve_dependencies(dependencies)
     if isinstance(result, PipelineRunResult):
-        return attach_report_paths(
+        return resolved_dependencies.attach_report_paths(
             response=result.response,
             validation_rows=result.validation_rows,
-            output_dir=validation_output_dir(),
+            output_dir=resolved_dependencies.validation_output_dir(),
         )
     return result
 
@@ -144,10 +151,11 @@ def _stage_steps(completed_stage_index: int) -> list[dict[str, str]]:
     ]
 
 
-def _report_download_path(value: str) -> Path:
+def _report_download_path(value: str, *, dependencies: WebAdapterDependencies | None = None) -> Path:
+    resolved_dependencies = _resolve_dependencies(dependencies)
     if not value:
         abort(404)
-    reports_dir = (validation_output_dir() / "reports").resolve()
+    reports_dir = (resolved_dependencies.validation_output_dir() / "reports").resolve()
     candidate = Path(value)
     if not candidate.is_absolute():
         candidate = reports_dir / candidate
@@ -159,5 +167,5 @@ def _report_download_path(value: str) -> Path:
     return resolved
 
 
-def _download_name(filename: str) -> str:
-    return public_download_name(filename, default_suffix=".xlsx")
+def _download_name(filename: str, *, dependencies: WebAdapterDependencies | None = None) -> str:
+    return _resolve_dependencies(dependencies).public_download_name(filename, default_suffix=".xlsx")

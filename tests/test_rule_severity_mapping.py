@@ -3,7 +3,7 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from backend.domain.policies.helpers import build_finding, severity_for_rule
+from backend.domain.policies.shared.helpers import build_finding, severity_for_rule
 
 
 def test_severity_is_derived_from_rule_id() -> None:

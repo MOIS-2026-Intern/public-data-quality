@@ -53,26 +53,25 @@ class ChatLLMClient:
 
     @property
     def enabled(self) -> bool:
-        error = self._configuration_error()
-        if error:
-            self.last_error = error
-            return False
-        return True
+        return not bool(self._configuration_error())
 
-    def invoke(self, prompt: str, *, system_prompt: str | None = None) -> ChatLLMResponse | None:
-        if not self.enabled:
-            return None
-
+    def _messages(self, prompt: str, *, system_prompt: str | None = None) -> list[dict[str, str]]:
         messages: list[dict[str, str]] = []
         if system_prompt:
             messages.append({"role": "system", "content": system_prompt})
         messages.append({"role": "user", "content": prompt})
+        return messages
 
-        response = self._invoke_messages(messages)
-        if response is not None:
-            return response
+    def _invoke(self, prompt: str, *, system_prompt: str | None = None, json_response: bool = False) -> ChatLLMResponse | None:
+        configuration_error = self._configuration_error()
+        if configuration_error:
+            self.last_error = configuration_error
+            self.last_response_preview = ""
+            return None
+        return self._post_chat(self._build_payload(self._messages(prompt, system_prompt=system_prompt), json_response=json_response))
 
-        return None
+    def invoke(self, prompt: str, *, system_prompt: str | None = None) -> ChatLLMResponse | None:
+        return self._invoke(prompt, system_prompt=system_prompt)
 
     def _build_payload(self, messages: list[dict[str, str]], *, json_response: bool = False) -> dict[str, Any]:
         payload: dict[str, Any] = {
@@ -131,26 +130,8 @@ class ChatLLMClient:
         self.last_error = ""
         return ChatLLMResponse(content=content)
 
-    def _invoke_messages(self, messages: list[dict[str, str]]) -> ChatLLMResponse | None:
-        return self._post_chat(self._build_payload(messages))
-
     def invoke_json(self, prompt: str, *, system_prompt: str | None = None) -> ChatLLMResponse | None:
-        if not self.enabled:
-            return None
-
-        messages: list[dict[str, str]] = []
-        if system_prompt:
-            messages.append({"role": "system", "content": system_prompt})
-        messages.append({"role": "user", "content": prompt})
-
-        response = self._invoke_messages_json(messages)
-        if response is not None:
-            return response
-
-        return None
-
-    def _invoke_messages_json(self, messages: list[dict[str, str]]) -> ChatLLMResponse | None:
-        return self._post_chat(self._build_payload(messages, json_response=True))
+        return self._invoke(prompt, system_prompt=system_prompt, json_response=True)
 
     @staticmethod
     def _extract_content(body: dict[str, Any]) -> str:

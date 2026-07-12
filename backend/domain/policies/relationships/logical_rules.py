@@ -3,7 +3,8 @@ from __future__ import annotations
 from typing import Any
 
 from backend.domain.entities.models import ColumnProfile, ValidationFinding
-from ..helpers import build_finding, parse_number
+from ..shared.findings import build_finding
+from ..shared.parsing import parse_number
 from .common import candidate_pairs
 
 

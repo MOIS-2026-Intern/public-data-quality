@@ -7,6 +7,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from backend.application.dto import (
     AgentTrace,
+    PipelineExecutionRequest,
     merge_state_updates,
     pipeline_data,
     pipeline_request,
@@ -27,6 +28,27 @@ def test_pipeline_request_preserves_missing_values_as_none() -> None:
     assert request.uploaded_dataset_name is None
     assert request.dataset_id is None
     assert request.dataset_name is None
+
+
+def test_pipeline_execution_request_builds_pipeline_request() -> None:
+    request = PipelineExecutionRequest(
+        dataset_id="d1",
+        dataset_name="dataset",
+        meta_csv="meta.csv",
+        uploaded_dataset_csv="uploaded.csv",
+        uploaded_dataset_name="uploaded",
+        use_llm_agents=True,
+        llm_model="gpt-4o",
+        llm_fast_model="gpt-4o-mini",
+        llm_strong_model="gpt-4o",
+    ).to_pipeline_request()
+
+    assert request.dataset_id == "d1"
+    assert request.dataset_name == "dataset"
+    assert request.meta_csv_path == "meta.csv"
+    assert request.uploaded_dataset_path == "uploaded.csv"
+    assert request.uploaded_dataset_name == "uploaded"
+    assert request.use_llm_agents is True
 
 
 def test_pipeline_rows_preserve_falsy_values() -> None:

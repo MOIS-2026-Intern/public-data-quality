@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-from backend.config.column_rules import (
+from backend.domain.entities.models import ValidationFinding
+from ..shared.settings import (
     REQUIRED_VALUE_NON_UNIQUE_NAME_TOKENS,
     REQUIRED_VALUE_NULL_MAX_RATIO,
     REQUIRED_VALUE_UNIQUE_IDENTIFIER_NAME_TOKENS,
 )
-from backend.domain.entities.models import ValidationFinding
 from .free_text import looks_free_text_column
 from .context import ColumnRuleContext
 from .helpers import (
@@ -15,12 +15,9 @@ from .helpers import (
     matching_row_indexes,
     truncated_address_row_indexes,
 )
-from ..helpers import (
-    build_finding,
-    contains_broken_text,
-    has_special_char_issue,
-    has_whitespace_issue,
-)
+from ..shared.findings import build_finding
+from ..shared.text_checks import contains_broken_text, has_special_char_issue, has_whitespace_issue
+
 
 def _normalize_name_for_identifier_check(value: str) -> str:
     return value.replace(" ", "").replace("_", "").replace("-", "").upper()

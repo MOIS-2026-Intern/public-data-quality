@@ -4,7 +4,7 @@ import re
 from typing import Any
 
 from backend.domain.entities.models import ColumnProfile, ValidationFinding
-from ..helpers import build_finding
+from ..shared.findings import build_finding
 from .common import candidate_pairs
 from .region import REGION_VALUE_RE, address_region_prefix, looks_address_column, looks_region_column
 

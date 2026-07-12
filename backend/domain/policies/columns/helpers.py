@@ -4,7 +4,8 @@ import re
 import unicodedata
 from collections.abc import Callable
 
-from backend.config.column_rules import (
+from backend.domain.entities.models import ColumnProfile
+from ..shared.settings import (
     COMPLETE_DETAIL_ADDRESS_PATTERNS,
     COMPLETE_DETAIL_ADDRESS_VALUES,
     DETAIL_ADDRESS_PLACEHOLDER_VALUES,
@@ -12,7 +13,6 @@ from backend.config.column_rules import (
     REQUIRED_VALUE_OPTIONAL_NAME_TOKENS,
     REQUIRED_VALUE_TAGS,
 )
-from backend.domain.entities.models import ColumnProfile
 from .context import Rows
 
 RowPredicate = Callable[[str], bool]

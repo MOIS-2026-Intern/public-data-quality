@@ -1,6 +1,7 @@
 from .pipeline import (
     AgentTrace,
     PipelineData,
+    PipelineExecutionRequest,
     PipelineRequest,
     PipelineResult,
     PipelineState,
@@ -15,10 +16,12 @@ from .pipeline import (
     update_pipeline_request,
     update_pipeline_result,
 )
+from .prepared_dataset import PreparedDataset
 
 __all__ = [
     "AgentTrace",
     "PipelineData",
+    "PipelineExecutionRequest",
     "PipelineRequest",
     "PipelineResult",
     "PipelineState",
@@ -28,6 +31,7 @@ __all__ = [
     "pipeline_result",
     "pipeline_rows",
     "pipeline_state_update",
+    "PreparedDataset",
     "require_dataset_meta",
     "update_pipeline_data",
     "update_pipeline_request",

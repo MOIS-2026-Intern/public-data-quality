@@ -9,7 +9,7 @@ from backend.application.dto import (
     update_pipeline_data,
     update_pipeline_result,
 )
-from backend.application.services.agent_base import BaseAgent
+from backend.application.agents.base import BaseAgent
 from backend.application.services.resolution.semantic_profiler import LLMSemanticProfiler
 from backend.domain.policies.columns import semantic_profile_llm_reasons
 
@@ -30,7 +30,11 @@ class SemanticProfilingAgent(BaseAgent):
         data = pipeline_data(state)
         request = pipeline_request(state)
         updated = []
-        use_llm = request.use_llm_agents and self.semantic_profiler is not None
+        use_llm = (
+            request.use_llm_agents
+            and self.semantic_profiler is not None
+            and self.semantic_profiler.enabled
+        )
 
         for column in data.columns:
             llm_reasons = semantic_profile_llm_reasons(column)

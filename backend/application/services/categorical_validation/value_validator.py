@@ -2,29 +2,16 @@ from __future__ import annotations
 
 from typing import Any
 
-try:
-    from backend.application.ports import JsonLLMPort
-    from backend.application.prompts.categorical import (
-        ADDRESS_DETAIL_SYSTEM_PROMPT,
-        CATEGORICAL_VALUE_SYSTEM_PROMPT,
-        ROW_CONTEXT_SYSTEM_PROMPT,
-        address_detail_validation_prompt,
-        categorical_value_validation_prompt,
-        row_context_validation_prompt,
-    )
-except ImportError:  # pragma: no cover
-    if (__package__ or "").split(".", 1)[0] != "services":
-        raise
-    from backend.application.ports import JsonLLMPort
-    from backend.application.prompts.categorical import (
-        ADDRESS_DETAIL_SYSTEM_PROMPT,
-        CATEGORICAL_VALUE_SYSTEM_PROMPT,
-        ROW_CONTEXT_SYSTEM_PROMPT,
-        address_detail_validation_prompt,
-        categorical_value_validation_prompt,
-        row_context_validation_prompt,
-    )
-from ..json_utils import parse_json_content
+from backend.application.ports import JsonLLMPort
+from backend.application.prompts.categorical import (
+    ADDRESS_DETAIL_SYSTEM_PROMPT,
+    CATEGORICAL_VALUE_SYSTEM_PROMPT,
+    ROW_CONTEXT_SYSTEM_PROMPT,
+    address_detail_validation_prompt,
+    categorical_value_validation_prompt,
+    row_context_validation_prompt,
+)
+from backend.application.shared import parse_json_content
 
 
 class LLMCategoricalValueValidator:

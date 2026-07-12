@@ -6,15 +6,10 @@ from urllib.parse import unquote, urlparse
 from werkzeug.datastructures import FileStorage
 from werkzeug.utils import secure_filename
 
+from backend.application.dto import PreparedDataset
 from backend.config.io import SUPPORTED_UPLOAD_SUFFIXES, URL_LIST_MAX_EXPANSION_DEPTH
-from backend.infrastructure.io.sources import (
-    PreparedDataset,
-    prepare_api_datasets,
-    prepare_saved_dataset,
-    prepare_url_datasets,
-)
-from backend.infrastructure.io.url_lists import load_url_list
 
+from .dependencies import WebAdapterDependencies, default_web_dependencies
 from .request_utils import (
     _first_payload_value,
     _parse_body_field,
@@ -26,19 +21,28 @@ from .request_utils import (
     _uploaded_url_list_files,
 )
 
+def _resolve_dependencies(dependencies: WebAdapterDependencies | None) -> WebAdapterDependencies:
+    return dependencies or default_web_dependencies()
+
 
 def _save_uploaded_file(
     *,
     uploaded_file: FileStorage,
     tmp_dir: str,
     index: int,
+    dependencies: WebAdapterDependencies | None = None,
 ) -> list[PreparedDataset]:
     display_filename = _uploaded_display_filename(uploaded_file.filename)
     filename = secure_filename(display_filename) or f"uploaded_dataset_{index}.csv"
     suffix = Path(filename).suffix or Path(display_filename).suffix or ".csv"
     uploaded_path = Path(tmp_dir) / f"dataset_{index}{suffix}"
     uploaded_file.save(uploaded_path)
-    return prepare_saved_dataset(uploaded_path, display_filename, tmp_dir, source_type="file")
+    return _resolve_dependencies(dependencies).prepare_saved_dataset(
+        uploaded_path,
+        display_filename,
+        tmp_dir,
+        source_type="file",
+    )
 
 
 def _load_uploaded_url_list_file(
@@ -46,13 +50,14 @@ def _load_uploaded_url_list_file(
     uploaded_file: FileStorage,
     tmp_dir: str,
     index: int,
+    dependencies: WebAdapterDependencies | None = None,
 ) -> list[str]:
     display_filename = _uploaded_display_filename(uploaded_file.filename)
     filename = secure_filename(display_filename) or f"url_list_{index}.txt"
     suffix = Path(filename).suffix or Path(display_filename).suffix or ".txt"
     uploaded_path = Path(tmp_dir) / f"url_list_{index}{suffix}"
     uploaded_file.save(uploaded_path)
-    return load_url_list(uploaded_path)
+    return _resolve_dependencies(dependencies).load_url_list(uploaded_path)
 
 
 def _unique_values(values: list[str]) -> list[str]:
@@ -81,9 +86,13 @@ def _is_data_download_like_url(value: str) -> bool:
     return Path(unquote(parsed.path)).suffix.lower() in SUPPORTED_UPLOAD_SUFFIXES
 
 
-def _downloadable_url_list_from_dataset(dataset: PreparedDataset) -> list[str]:
+def _downloadable_url_list_from_dataset(
+    dataset: PreparedDataset,
+    *,
+    dependencies: WebAdapterDependencies | None = None,
+) -> list[str]:
     try:
-        urls = load_url_list(dataset.path, strict=True)
+        urls = _resolve_dependencies(dependencies).load_url_list(dataset.path, strict=True)
     except ValueError:
         return []
 
@@ -99,19 +108,21 @@ def _prepare_url_input_datasets(
     *,
     depth: int = 0,
     seen_urls: set[str] | None = None,
+    dependencies: WebAdapterDependencies | None = None,
 ) -> list[PreparedDataset]:
     seen = seen_urls if seen_urls is not None else set()
     if data_url in seen:
         return []
     seen.add(data_url)
 
-    prepared = prepare_url_datasets(data_url, tmp_dir)
+    resolved_dependencies = _resolve_dependencies(dependencies)
+    prepared = resolved_dependencies.prepare_url_datasets(data_url, tmp_dir)
     if depth >= URL_LIST_MAX_EXPANSION_DEPTH:
         return prepared
 
     expanded: list[PreparedDataset] = []
     for dataset in prepared:
-        nested_urls = _downloadable_url_list_from_dataset(dataset)
+        nested_urls = _downloadable_url_list_from_dataset(dataset, dependencies=resolved_dependencies)
         if not nested_urls:
             expanded.append(dataset)
             continue
@@ -124,16 +135,29 @@ def _prepare_url_input_datasets(
                     tmp_dir,
                     depth=depth + 1,
                     seen_urls=seen,
+                    dependencies=resolved_dependencies,
                 )
             )
         expanded.extend(nested_prepared or [dataset])
     return expanded
 
 
-def _prepare_request_datasets(payload: dict[str, object], tmp_dir: str) -> list[PreparedDataset]:
+def _prepare_request_datasets(
+    payload: dict[str, object],
+    tmp_dir: str,
+    *,
+    dependencies: WebAdapterDependencies | None = None,
+) -> list[PreparedDataset]:
     prepared: list[PreparedDataset] = []
     for index, uploaded_file in enumerate(_uploaded_files(), start=1):
-        prepared.extend(_save_uploaded_file(uploaded_file=uploaded_file, tmp_dir=tmp_dir, index=index))
+        prepared.extend(
+            _save_uploaded_file(
+                uploaded_file=uploaded_file,
+                tmp_dir=tmp_dir,
+                index=index,
+                dependencies=dependencies,
+            )
+        )
 
     source_hint = str(_first_payload_value(payload, "source_type", "input_type", "type") or "").strip().lower()
     generic_urls = _payload_values(payload, "url", "source_url", "nia_url", split_lines=True)
@@ -141,7 +165,12 @@ def _prepare_request_datasets(payload: dict[str, object], tmp_dir: str) -> list[
     if source_hint == "url":
         for index, uploaded_file in enumerate(_uploaded_url_list_files(), start=1):
             uploaded_url_list_urls.extend(
-                _load_uploaded_url_list_file(uploaded_file=uploaded_file, tmp_dir=tmp_dir, index=index)
+                _load_uploaded_url_list_file(
+                    uploaded_file=uploaded_file,
+                    tmp_dir=tmp_dir,
+                    index=index,
+                    dependencies=dependencies,
+                )
             )
     has_api_options = any(
         _first_payload_value(payload, name) is not None
@@ -175,7 +204,7 @@ def _prepare_request_datasets(payload: dict[str, object], tmp_dir: str) -> list[
         data_urls = generic_urls
     data_urls = _unique_values(data_urls)
     for data_url in data_urls:
-        prepared.extend(_prepare_url_input_datasets(data_url, tmp_dir))
+        prepared.extend(_prepare_url_input_datasets(data_url, tmp_dir, dependencies=dependencies))
 
     api_urls = _payload_values(payload, "api_url", "apiEndpoint", "endpoint", "openapi_url", split_lines=True)
     if not api_urls and generic_urls and (source_hint in {"api", "openapi"} or has_api_options):
@@ -183,7 +212,7 @@ def _prepare_request_datasets(payload: dict[str, object], tmp_dir: str) -> list[
     api_urls = _unique_values(api_urls)
     for api_url in api_urls:
         prepared.extend(
-            prepare_api_datasets(
+            _resolve_dependencies(dependencies).prepare_api_datasets(
                 api_url,
                 tmp_dir,
                 method=str(_first_payload_value(payload, "api_method", "method") or "GET"),

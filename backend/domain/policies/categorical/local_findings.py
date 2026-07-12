@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections import Counter
 from dataclasses import dataclass
 
-from backend.domain.policies.helpers import build_finding
+from ..shared.findings import build_finding
 from .column import (
     allows_compact_domain_variant_detection,
     allows_context_free_replacement_detection,

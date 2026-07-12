@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-from backend.config.llm import (
+from backend.domain.entities.models import ColumnProfile
+from ..shared.settings import (
     LLM_SEMANTIC_PROFILE_ALWAYS_TRIGGER_TAGS,
     LLM_SEMANTIC_PROFILE_AMBIGUOUS_TERMS,
     LLM_SEMANTIC_PROFILE_SKIP_TAGS,
 )
-from backend.domain.entities.models import ColumnProfile
 
 from .free_text import looks_free_text_column
 

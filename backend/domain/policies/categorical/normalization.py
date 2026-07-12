@@ -3,7 +3,7 @@ from __future__ import annotations
 import re
 from collections import Counter
 
-from backend.config.categorical import CATEGORICAL_LLM_MIN_REPEAT_COUNT
+from ..shared.settings import CATEGORICAL_LLM_MIN_REPEAT_COUNT
 from .column import (
     is_public_private_category_value,
     looks_institution_category_column,

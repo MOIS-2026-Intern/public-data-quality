@@ -1,36 +1,19 @@
 from __future__ import annotations
 
-try:
-    from backend.application.dto import (
-        PipelineState,
-        merge_state_updates,
-        pipeline_request,
-        pipeline_result,
-        require_dataset_meta,
-        update_pipeline_data,
-        update_pipeline_request,
-        update_pipeline_result,
-    )
-    from backend.application.ports import DatasetGatewayPort
-    from backend.domain.entities.models import ColumnProfile
-    from backend.domain.services.normalization import build_column_profile
-except ImportError:  # pragma: no cover
-    if (__package__ or "").split(".", 1)[0] != "agents":
-        raise
-    from backend.application.dto import (
-        PipelineState,
-        merge_state_updates,
-        pipeline_request,
-        pipeline_result,
-        require_dataset_meta,
-        update_pipeline_data,
-        update_pipeline_request,
-        update_pipeline_result,
-    )
-    from backend.application.ports import DatasetGatewayPort
-    from backend.domain.entities.models import ColumnProfile
-    from backend.domain.services.normalization import build_column_profile
-from backend.application.services.agent_base import BaseAgent
+from backend.application.agents.base import BaseAgent
+from backend.application.dto import (
+    PipelineState,
+    merge_state_updates,
+    pipeline_request,
+    pipeline_result,
+    require_dataset_meta,
+    update_pipeline_data,
+    update_pipeline_request,
+    update_pipeline_result,
+)
+from backend.application.ports import DatasetGatewayPort
+from backend.domain.entities.models import ColumnProfile
+from backend.domain.services.normalization import build_column_profile
 
 
 class ReferenceLoaderAgent(BaseAgent):

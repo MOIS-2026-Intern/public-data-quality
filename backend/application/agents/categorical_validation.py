@@ -2,43 +2,17 @@ from __future__ import annotations
 
 from typing import Any
 
-try:
-    from backend.application.dto import (
-        PipelineState,
-        merge_state_updates,
-        pipeline_data,
-        pipeline_request,
-        pipeline_result,
-        pipeline_rows,
-        require_dataset_meta,
-        update_pipeline_result,
-    )
-    from backend.domain.policies.categorical import (
-        LocalCategoricalFindingCounts,
-        apply_local_categorical_findings,
-        looks_free_text_column,
-        value_rows,
-    )
-except ImportError:  # pragma: no cover
-    if (__package__ or "").split(".", 1)[0] != "agents":
-        raise
-    from backend.application.dto import (
-        PipelineState,
-        merge_state_updates,
-        pipeline_data,
-        pipeline_request,
-        pipeline_result,
-        pipeline_rows,
-        require_dataset_meta,
-        update_pipeline_result,
-    )
-    from backend.domain.policies.categorical import (
-        LocalCategoricalFindingCounts,
-        apply_local_categorical_findings,
-        looks_free_text_column,
-        value_rows,
-    )
-from backend.application.services.agent_base import BaseAgent
+from backend.application.agents.base import BaseAgent
+from backend.application.dto import (
+    PipelineState,
+    merge_state_updates,
+    pipeline_data,
+    pipeline_request,
+    pipeline_result,
+    pipeline_rows,
+    require_dataset_meta,
+    update_pipeline_result,
+)
 from backend.application.services.categorical_validation.address_detail import run_llm_address_detail_validation
 from backend.application.services.categorical_validation.column_validation import (
     column_value_counter,
@@ -55,6 +29,12 @@ from backend.application.services.categorical_validation.row_context import (
 )
 from backend.application.services.categorical_validation.value_validator import LLMCategoricalValueValidator
 from backend.config.categorical import ROW_CONTEXT_DEFAULT_LIMIT
+from backend.domain.policies.categorical import (
+    LocalCategoricalFindingCounts,
+    apply_local_categorical_findings,
+    looks_free_text_column,
+    value_rows,
+)
 
 
 class CategoricalSemanticValidationAgent(BaseAgent):
@@ -190,7 +170,11 @@ class CategoricalSemanticValidationAgent(BaseAgent):
         traces = list(result.agent_traces)
         findings = list(result.findings)
         rows = pipeline_rows(state)
-        use_llm = request.use_llm_agents and self.validator is not None
+        use_llm = (
+            request.use_llm_agents
+            and self.validator is not None
+            and self.validator.enabled
+        )
 
         if not use_llm:
             traces.append(

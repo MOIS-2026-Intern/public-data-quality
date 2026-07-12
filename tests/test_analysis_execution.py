@@ -7,6 +7,7 @@ import sys
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import backend.adapters.web.analysis_execution as execution
+from backend.application.dto import PipelineExecutionRequest
 from backend.infrastructure.io.sources import PreparedDataset
 
 
@@ -25,7 +26,10 @@ def test_analyze_prepared_datasets_wraps_single_success() -> None:
         "result": {"summary": {"dataset_name": "sample", "row_count": 1}, "findings": []},
     }
     try:
-        payload, status_code = execution.analyze_prepared_datasets(prepared_datasets=[dataset], options={})
+        payload, status_code = execution.analyze_prepared_datasets(
+            prepared_datasets=[dataset],
+            options=PipelineExecutionRequest(),
+        )
     finally:
         execution._analyze_dataset_item = original
 
@@ -58,7 +62,10 @@ def test_analyze_prepared_datasets_does_not_generate_batch_report_path() -> None
     )
     execution._analyze_dataset_item = lambda **_: next(results)
     try:
-        payload, status_code = execution.analyze_prepared_datasets(prepared_datasets=datasets, options={})
+        payload, status_code = execution.analyze_prepared_datasets(
+            prepared_datasets=datasets,
+            options=PipelineExecutionRequest(),
+        )
     finally:
         execution._analyze_dataset_item = original
 
@@ -82,7 +89,10 @@ def test_analyze_prepared_datasets_wraps_single_failure() -> None:
         "error": "boom",
     }
     try:
-        payload, status_code = execution.analyze_prepared_datasets(prepared_datasets=[dataset], options={})
+        payload, status_code = execution.analyze_prepared_datasets(
+            prepared_datasets=[dataset],
+            options=PipelineExecutionRequest(),
+        )
     finally:
         execution._analyze_dataset_item = original
 
@@ -98,9 +108,10 @@ def test_stream_analysis_events_emits_final_payload_and_cleans_up(monkeypatch, t
     dataset = PreparedDataset(display_name="sample.csv", path=dataset_path, source_type="file", response_type="csv")
     cleanup_calls = {"count": 0}
 
-    def fake_stream_pipeline(**kwargs):
-        assert kwargs["uploaded_dataset_csv"] == str(dataset_path)
-        assert kwargs["uploaded_dataset_name"] == "sample.csv"
+    def fake_stream_pipeline(*, request, dependencies):
+        assert dependencies is not None
+        assert request.uploaded_dataset_csv == str(dataset_path)
+        assert request.uploaded_dataset_name == "sample.csv"
         yield {
             "kind": "progress",
             "node": "load_reference_data",
@@ -119,7 +130,7 @@ def test_stream_analysis_events_emits_final_payload_and_cleans_up(monkeypatch, t
     chunks = list(
         execution.stream_analysis_events(
             prepared_datasets=[dataset],
-            options={},
+            options=PipelineExecutionRequest(),
             cleanup=lambda: cleanup_calls.__setitem__("count", cleanup_calls["count"] + 1),
         )
     )

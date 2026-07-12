@@ -2,22 +2,12 @@ from __future__ import annotations
 
 from typing import Any
 
-try:
-    from backend.config.categorical import CATEGORICAL_LLM_CONFIDENCE_THRESHOLD
-    from backend.domain.entities.models import ValidationFinding
-    from backend.domain.policies.categorical import finding_key
-    from backend.domain.policies.categorical.column import is_public_private_category_value
-    from backend.domain.policies.categorical.text import clean_reason_text, is_specific_row_context_reason
-    from backend.domain.policies.helpers import build_finding
-except ImportError:  # pragma: no cover
-    if (__package__ or "").split(".", 1)[0] != "services":
-        raise
-    from backend.config.categorical import CATEGORICAL_LLM_CONFIDENCE_THRESHOLD
-    from backend.domain.entities.models import ValidationFinding
-    from backend.domain.policies.categorical import finding_key
-    from backend.domain.policies.categorical.column import is_public_private_category_value
-    from backend.domain.policies.categorical.text import clean_reason_text, is_specific_row_context_reason
-    from backend.domain.policies.helpers import build_finding
+from backend.config.categorical import CATEGORICAL_LLM_CONFIDENCE_THRESHOLD
+from backend.domain.entities.models import ValidationFinding
+from backend.domain.policies.categorical import finding_key
+from backend.domain.policies.categorical.column import is_public_private_category_value
+from backend.domain.policies.categorical.text import clean_reason_text, is_specific_row_context_reason
+from backend.domain.policies.shared.findings import build_finding
 
 
 def append_row_context_findings(

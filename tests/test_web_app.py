@@ -27,7 +27,11 @@ def test_analyze_route_returns_single_result_envelope(monkeypatch, tmp_path) -> 
 
     monkeypatch.setattr(api_routes, "_request_payload", lambda: {})
     monkeypatch.setattr(api_routes, "_request_options", lambda payload: {})
-    monkeypatch.setattr(api_routes, "_prepare_request_datasets", lambda payload, tmp_dir: [dataset])
+    monkeypatch.setattr(
+        api_routes,
+        "_prepare_request_datasets",
+        lambda payload, tmp_dir, *, dependencies=None: [dataset],
+    )
     monkeypatch.setattr(
         api_routes,
         "analyze_prepared_datasets",
@@ -55,7 +59,11 @@ def test_analyze_route_hides_unexpected_error_details(monkeypatch) -> None:
 
     monkeypatch.setattr(api_routes, "_request_payload", lambda: {})
     monkeypatch.setattr(api_routes, "_request_options", lambda payload: {})
-    monkeypatch.setattr(api_routes, "_prepare_request_datasets", lambda payload, tmp_dir: (_ for _ in ()).throw(RuntimeError("secret detail")))
+    monkeypatch.setattr(
+        api_routes,
+        "_prepare_request_datasets",
+        lambda payload, tmp_dir, *, dependencies=None: (_ for _ in ()).throw(RuntimeError("secret detail")),
+    )
 
     response = client.post("/api/analyze")
 

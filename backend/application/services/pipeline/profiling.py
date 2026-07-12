@@ -26,7 +26,7 @@ from backend.application.dto import (
 )
 from backend.domain.entities.models import ColumnProfile
 from backend.domain.services.normalization import normalize_column_name, tokenize_korean_label
-from backend.domain.policies.helpers import parse_datetime
+from backend.domain.policies.shared.parsing import parse_datetime
 from .tracing import pipeline_trace
 
 ProfileStats = dict[str, dict]

@@ -1,10 +1,9 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Iterator
-from typing import Any
 
+from backend.application.dto import PipelineExecutionRequest, PreparedDataset
 from backend.config.pipeline import PIPELINE_PROGRESS_STEPS, REPORT_PROGRESS_STEP
-from backend.infrastructure.io.sources import PreparedDataset
 
 from .error_support import (
     UNEXPECTED_ANALYSIS_ERROR_MESSAGE,
@@ -21,9 +20,10 @@ from .analysis_support import (
     _progress_event,
     _stage_steps,
 )
+from .dependencies import WebAdapterDependencies, default_web_dependencies
 from .pipeline_service import stream_pipeline
 
-AnalysisOptions = dict[str, Any]
+AnalysisOptions = PipelineExecutionRequest
 
 __all__ = [
     "analyze_prepared_datasets",
@@ -32,12 +32,25 @@ __all__ = [
 ]
 
 
+def _resolve_dependencies(dependencies: WebAdapterDependencies | None) -> WebAdapterDependencies:
+    return dependencies or default_web_dependencies()
+
+
 def analyze_prepared_datasets(
     *,
     prepared_datasets: list[PreparedDataset],
     options: AnalysisOptions,
+    dependencies: WebAdapterDependencies | None = None,
 ) -> tuple[AnalysisPayload, int]:
-    items = [_analyze_dataset_item(dataset=dataset, options=options) for dataset in prepared_datasets]
+    resolved_dependencies = _resolve_dependencies(dependencies)
+    items = [
+        _analyze_dataset_item(
+            dataset=dataset,
+            options=options,
+            dependencies=resolved_dependencies,
+        )
+        for dataset in prepared_datasets
+    ]
     summary = _batch_summary(items)
     status_code = 200 if summary["success_count"] else 400
     return _analysis_payload(items, summary=summary), status_code
@@ -47,16 +60,23 @@ def analyze_batch_prepared_datasets(
     *,
     prepared_datasets: list[PreparedDataset],
     options: AnalysisOptions,
+    dependencies: WebAdapterDependencies | None = None,
 ) -> tuple[AnalysisPayload, int]:
-    return analyze_prepared_datasets(prepared_datasets=prepared_datasets, options=options)
+    return analyze_prepared_datasets(
+        prepared_datasets=prepared_datasets,
+        options=options,
+        dependencies=dependencies,
+    )
 
 
 def stream_analysis_events(
     *,
     prepared_datasets: list[PreparedDataset],
     options: AnalysisOptions,
+    dependencies: WebAdapterDependencies | None = None,
     cleanup: Callable[[], None],
 ) -> Iterator[bytes]:
+    resolved_dependencies = _resolve_dependencies(dependencies)
     total_files = len(prepared_datasets)
     items: list[AnalysisItem] = []
     final_stage_index = len(PIPELINE_PROGRESS_STEPS) + 1
@@ -80,6 +100,7 @@ def stream_analysis_events(
                     total_files=total_files,
                     dataset=dataset,
                     options=options,
+                    dependencies=resolved_dependencies,
                 )
                 items.append(_success_item(dataset.display_name, result))
                 yield _dataset_finished_event(
@@ -119,9 +140,14 @@ def _analyze_dataset_item(
     *,
     dataset: PreparedDataset,
     options: AnalysisOptions,
+    dependencies: WebAdapterDependencies,
 ) -> AnalysisItem:
     try:
-        result = _analyze_prepared_dataset(dataset=dataset, **options)
+        result = _analyze_prepared_dataset(
+            dataset=dataset,
+            request=options,
+            dependencies=dependencies,
+        )
         return _success_item(dataset.display_name, result)
     except Exception as exc:  # pragma: no cover
         return _error_item(dataset.display_name, _analysis_error_message(exc))
@@ -133,17 +159,22 @@ def _stream_dataset_events(
     total_files: int,
     dataset: PreparedDataset,
     options: AnalysisOptions,
+    dependencies: WebAdapterDependencies,
 ) -> Iterator[bytes]:
     result = None
     for pipeline_event in stream_pipeline(
-        uploaded_dataset_csv=str(dataset.path),
-        uploaded_dataset_name=dataset.display_name,
-        **options,
+        request=options.model_copy(
+            update={
+                "uploaded_dataset_csv": str(dataset.path),
+                "uploaded_dataset_name": dataset.display_name,
+            }
+        ),
+        dependencies=dependencies,
     ):
         if pipeline_event.get("kind") == "result":
             payload = pipeline_event.get("result")
             if payload is not None:
-                result = _analysis_result_payload(payload)
+                result = _analysis_result_payload(payload, dependencies=dependencies)
             continue
         progress_payload = _pipeline_progress_payload(
             index=index,

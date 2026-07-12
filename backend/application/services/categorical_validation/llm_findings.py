@@ -3,38 +3,20 @@ from __future__ import annotations
 from collections import Counter
 import re
 
-try:
-    from backend.config.categorical import CATEGORICAL_LLM_CONFIDENCE_THRESHOLD
-    from backend.domain.policies.categorical import value_rows
-    from backend.domain.policies.categorical.column import (
-        is_public_private_category_value,
-        is_yn_value,
-        looks_boolean_column,
-        looks_date_column,
-        looks_date_value,
-        looks_free_text_column,
-        looks_institution_category_column,
-    )
-    from backend.domain.policies.categorical.normalization import is_llm_normalization_actionable
-    from backend.domain.policies.categorical.text import clean_reason_text, is_specific_out_of_domain_reason
-    from backend.domain.policies.helpers import build_finding
-except ImportError:  # pragma: no cover
-    if (__package__ or "").split(".", 1)[0] != "services":
-        raise
-    from backend.config.categorical import CATEGORICAL_LLM_CONFIDENCE_THRESHOLD
-    from backend.domain.policies.categorical import value_rows
-    from backend.domain.policies.categorical.column import (
-        is_public_private_category_value,
-        is_yn_value,
-        looks_boolean_column,
-        looks_date_column,
-        looks_date_value,
-        looks_free_text_column,
-        looks_institution_category_column,
-    )
-    from backend.domain.policies.categorical.normalization import is_llm_normalization_actionable
-    from backend.domain.policies.categorical.text import clean_reason_text, is_specific_out_of_domain_reason
-    from backend.domain.policies.helpers import build_finding
+from backend.config.categorical import CATEGORICAL_LLM_CONFIDENCE_THRESHOLD
+from backend.domain.policies.categorical import value_rows
+from backend.domain.policies.categorical.column import (
+    is_public_private_category_value,
+    is_yn_value,
+    looks_boolean_column,
+    looks_date_column,
+    looks_date_value,
+    looks_free_text_column,
+    looks_institution_category_column,
+)
+from backend.domain.policies.categorical.normalization import is_llm_normalization_actionable
+from backend.domain.policies.categorical.text import clean_reason_text, is_specific_out_of_domain_reason
+from backend.domain.policies.shared.findings import build_finding
 
 
 def apply_llm_categorical_findings(

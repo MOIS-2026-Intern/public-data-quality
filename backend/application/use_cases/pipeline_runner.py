@@ -1,10 +1,13 @@
 from __future__ import annotations
 
-from pathlib import Path
 from typing import Any
 
-from backend.application.dto import PipelineRequest, PipelineState, pipeline_state_update
-from backend.application.ports import PipelineGraphPort
+from backend.application.dto import (
+    PipelineExecutionRequest,
+    PipelineState,
+    pipeline_state_update,
+)
+from backend.application.ports import PipelineExecutorPort
 from backend.config.pipeline import (
     PIPELINE_PROGRESS_ACTIVE_MESSAGE_SUFFIX,
     PIPELINE_PROGRESS_DONE_MESSAGE_SUFFIX,
@@ -17,43 +20,16 @@ from backend.config.pipeline import (
 
 
 def _validate_pipeline_request(
-    *,
-    dataset_id: str | None,
-    dataset_name: str | None,
-    meta_csv: str | None,
-    uploaded_dataset_csv: str | None,
+    request: PipelineExecutionRequest,
 ) -> None:
-    if not uploaded_dataset_csv and not dataset_id and not dataset_name:
+    if not request.uploaded_dataset_csv and not request.dataset_id and not request.dataset_name:
         raise ValueError(PIPELINE_REQUEST_SOURCE_REQUIRED_ERROR)
-    if not uploaded_dataset_csv and not meta_csv:
+    if not request.uploaded_dataset_csv and not request.meta_csv:
         raise ValueError(PIPELINE_REQUEST_META_CSV_REQUIRED_ERROR)
 
 
-def _pipeline_input(
-    *,
-    dataset_id: str | None,
-    dataset_name: str | None,
-    meta_csv: str | None,
-    uploaded_dataset_csv: str | None,
-    uploaded_dataset_name: str | None,
-    use_llm_agents: bool,
-    llm_model: str | None,
-    llm_fast_model: str | None,
-    llm_strong_model: str | None,
-) -> PipelineState:
-    return pipeline_state_update(
-        request=PipelineRequest(
-            dataset_id=dataset_id,
-            dataset_name=dataset_name,
-            meta_csv_path=str(Path(meta_csv)) if meta_csv else None,
-            uploaded_dataset_path=str(Path(uploaded_dataset_csv)) if uploaded_dataset_csv else None,
-            uploaded_dataset_name=uploaded_dataset_name,
-            use_llm_agents=use_llm_agents,
-            llm_model=llm_model,
-            llm_fast_model=llm_fast_model,
-            llm_strong_model=llm_strong_model,
-        )
-    )
+def _pipeline_input(request: PipelineExecutionRequest) -> PipelineState:
+    return pipeline_state_update(request=request.to_pipeline_request())
 
 
 def _pipeline_progress_event(
@@ -80,41 +56,16 @@ def _pipeline_progress_event(
 
 
 def stream_pipeline_state(
-    graph: PipelineGraphPort,
-    *,
-    dataset_id: str | None = None,
-    dataset_name: str | None = None,
-    meta_csv: str | None = None,
-    uploaded_dataset_csv: str | None = None,
-    uploaded_dataset_name: str | None = None,
-    use_llm_agents: bool = False,
-    llm_model: str | None = None,
-    llm_fast_model: str | None = None,
-    llm_strong_model: str | None = None,
+    executor: PipelineExecutorPort,
+    request: PipelineExecutionRequest,
 ):
-    _validate_pipeline_request(
-        dataset_id=dataset_id,
-        dataset_name=dataset_name,
-        meta_csv=meta_csv,
-        uploaded_dataset_csv=uploaded_dataset_csv,
-    )
-
-    graph_input = _pipeline_input(
-        dataset_id=dataset_id,
-        dataset_name=dataset_name,
-        meta_csv=meta_csv,
-        uploaded_dataset_csv=uploaded_dataset_csv,
-        uploaded_dataset_name=uploaded_dataset_name,
-        use_llm_agents=use_llm_agents,
-        llm_model=llm_model,
-        llm_fast_model=llm_fast_model,
-        llm_strong_model=llm_strong_model,
-    )
+    _validate_pipeline_request(request)
+    graph_input = _pipeline_input(request)
     result_state: dict[str, Any] = dict(graph_input)
     step_positions = {node_name: index for index, (node_name, _) in enumerate(PIPELINE_PROGRESS_STEPS, start=1)}
     step_total = len(PIPELINE_PROGRESS_STEPS) + 1
 
-    for update in graph.stream(graph_input, stream_mode="updates"):
+    for update in executor.stream_updates(graph_input):
         if not isinstance(update, dict):
             continue
         for node_name, node_update in update.items():
@@ -152,34 +103,8 @@ def stream_pipeline_state(
 
 
 def run_pipeline_state(
-    graph: PipelineGraphPort,
-    *,
-    dataset_id: str | None = None,
-    dataset_name: str | None = None,
-    meta_csv: str | None = None,
-    uploaded_dataset_csv: str | None = None,
-    uploaded_dataset_name: str | None = None,
-    use_llm_agents: bool = False,
-    llm_model: str | None = None,
-    llm_fast_model: str | None = None,
-    llm_strong_model: str | None = None,
+    executor: PipelineExecutorPort,
+    request: PipelineExecutionRequest,
 ) -> dict[str, Any]:
-    _validate_pipeline_request(
-        dataset_id=dataset_id,
-        dataset_name=dataset_name,
-        meta_csv=meta_csv,
-        uploaded_dataset_csv=uploaded_dataset_csv,
-    )
-    return graph.invoke(
-        _pipeline_input(
-            dataset_id=dataset_id,
-            dataset_name=dataset_name,
-            meta_csv=meta_csv,
-            uploaded_dataset_csv=uploaded_dataset_csv,
-            uploaded_dataset_name=uploaded_dataset_name,
-            use_llm_agents=use_llm_agents,
-            llm_model=llm_model,
-            llm_fast_model=llm_fast_model,
-            llm_strong_model=llm_strong_model,
-        )
-    )
+    _validate_pipeline_request(request)
+    return executor.run(_pipeline_input(request))

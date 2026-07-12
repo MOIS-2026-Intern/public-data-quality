@@ -2,14 +2,8 @@ from __future__ import annotations
 
 from typing import Callable
 
-try:
-    from backend.application.dto import AgentTrace, PipelineState, pipeline_data, pipeline_rows, require_dataset_meta
-    from backend.domain.entities.models import ValidationFinding
-except ImportError:  # pragma: no cover
-    if (__package__ or "").split(".", 1)[0] != "services":
-        raise
-    from backend.application.dto import AgentTrace, PipelineState, pipeline_data, pipeline_rows, require_dataset_meta
-    from backend.domain.entities.models import ValidationFinding
+from backend.application.dto import AgentTrace, PipelineState, pipeline_data, pipeline_rows, require_dataset_meta
+from backend.domain.entities.models import ValidationFinding
 from .value_validator import LLMCategoricalValueValidator
 from .row_context_results import append_row_context_findings
 from .row_selection import (

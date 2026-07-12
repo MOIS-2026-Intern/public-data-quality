@@ -3,7 +3,8 @@ from __future__ import annotations
 from backend.domain.entities.models import ValidationFinding
 from .context import ColumnRuleContext
 from .helpers import matching_row_indexes
-from ..helpers import build_finding, parse_number
+from ..shared.findings import build_finding
+from ..shared.parsing import parse_number
 
 
 def _numeric_parse_or_negative_findings(

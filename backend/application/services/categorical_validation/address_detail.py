@@ -2,50 +2,26 @@ from __future__ import annotations
 
 from typing import Any, Callable
 
-try:
-    from backend.application.dto import (
-        AgentTrace,
-        PipelineState,
-        pipeline_data,
-        pipeline_rows,
-        require_dataset_meta,
-    )
-    from backend.config.categorical import (
-        ADDRESS_DETAIL_LLM_CONFIDENCE_THRESHOLD,
-        ADDRESS_DETAIL_LLM_MAX_CANDIDATES,
-    )
-    from backend.domain.policies.categorical import finding_key
-    from backend.domain.policies.categorical.text import clean_reason_text
-    from backend.domain.entities.models import ValidationFinding
-    from backend.domain.policies.columns.helpers import (
-        address_context_columns,
-        incomplete_detail_address_row_indexes,
-        looks_detail_address_column,
-    )
-    from backend.domain.policies.helpers import build_finding
-except ImportError:  # pragma: no cover
-    if (__package__ or "").split(".", 1)[0] != "services":
-        raise
-    from backend.application.dto import (
-        AgentTrace,
-        PipelineState,
-        pipeline_data,
-        pipeline_rows,
-        require_dataset_meta,
-    )
-    from backend.config.categorical import (
-        ADDRESS_DETAIL_LLM_CONFIDENCE_THRESHOLD,
-        ADDRESS_DETAIL_LLM_MAX_CANDIDATES,
-    )
-    from backend.domain.policies.categorical import finding_key
-    from backend.domain.policies.categorical.text import clean_reason_text
-    from backend.domain.entities.models import ValidationFinding
-    from backend.domain.policies.columns.helpers import (
-        address_context_columns,
-        incomplete_detail_address_row_indexes,
-        looks_detail_address_column,
-    )
-    from backend.domain.policies.helpers import build_finding
+from backend.application.dto import (
+    AgentTrace,
+    PipelineState,
+    pipeline_data,
+    pipeline_rows,
+    require_dataset_meta,
+)
+from backend.config.categorical import (
+    ADDRESS_DETAIL_LLM_CONFIDENCE_THRESHOLD,
+    ADDRESS_DETAIL_LLM_MAX_CANDIDATES,
+)
+from backend.domain.entities.models import ValidationFinding
+from backend.domain.policies.categorical import finding_key
+from backend.domain.policies.categorical.text import clean_reason_text
+from backend.domain.policies.columns.helpers import (
+    address_context_columns,
+    incomplete_detail_address_row_indexes,
+    looks_detail_address_column,
+)
+from backend.domain.policies.shared.findings import build_finding
 from .value_validator import LLMCategoricalValueValidator
 
 TraceFactory = Callable[[str, str | None, str], AgentTrace]

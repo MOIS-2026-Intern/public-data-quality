@@ -2,14 +2,14 @@ from __future__ import annotations
 
 import re
 
-from backend.config.column_rules import (
+from backend.domain.entities.models import ColumnProfile
+from ..shared.settings import (
     FREE_TEXT_LONG_SAMPLE_MIN_COUNT,
     FREE_TEXT_LONG_SAMPLE_MIN_LENGTH,
+    FREE_TEXT_COLUMN_NAME_TOKENS,
     FREE_TEXT_STRUCTURED_NAME_TOKENS,
     FREE_TEXT_STRUCTURED_TAGS,
 )
-from backend.config.validation import FREE_TEXT_COLUMN_NAME_TOKENS
-from backend.domain.entities.models import ColumnProfile
 
 FREE_FORMAT = "free_format"
 FIXED_FORMAT = "fixed_format"

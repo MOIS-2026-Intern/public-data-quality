@@ -2,16 +2,17 @@ from __future__ import annotations
 
 import re
 
-from backend.config.column_rules import DATE_COLUMN_NAME_TOKENS, TIME_ONLY_COLUMN_NAME_TOKENS
-from backend.config.validation import BOOLEAN_ALLOWED_VALUES
 from backend.domain.entities.models import ValidationFinding
+from ..shared.settings import (
+    BOOLEAN_ALLOWED_VALUES,
+    DATE_COLUMN_NAME_TOKENS,
+    TIME_ONLY_COLUMN_NAME_TOKENS,
+)
 from .context import ColumnRuleContext
 from .helpers import matching_row_indexes
-from ..helpers import (
-    PHONE_DIGIT_RE,
-    build_finding,
-    parse_datetime,
-)
+from ..shared.findings import build_finding
+from ..shared.parsing import parse_datetime
+from ..shared.text_checks import looks_phone_number_text
 
 
 def _looks_time_only_column(column) -> bool:
@@ -92,7 +93,7 @@ def find_invalid_phone_numbers(context: ColumnRuleContext) -> list[ValidationFin
     if "phone" not in column.semantic_tags:
         return []
 
-    invalid_phone = [value for value in column.sample_values if value and not PHONE_DIGIT_RE.match(value)]
+    invalid_phone = [value for value in column.sample_values if value and not looks_phone_number_text(value)]
     if not invalid_phone:
         return []
 
@@ -106,7 +107,7 @@ def find_invalid_phone_numbers(context: ColumnRuleContext) -> list[ValidationFin
             row_indexes=matching_row_indexes(
                 context.rows,
                 column.raw_name,
-                lambda value: bool(value) and not PHONE_DIGIT_RE.match(value),
+                lambda value: bool(value) and not looks_phone_number_text(value),
             ),
             evidence=invalid_phone[:3],
         )

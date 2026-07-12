@@ -12,6 +12,7 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import parse_qsl, quote, unquote, urlencode, urljoin, urlparse, urlunparse
 from urllib.request import Request, urlopen
 
+from backend.application.dto import PreparedDataset
 from backend.config.io import (
     PUBLIC_DATA_PORTAL_DOWNLOAD_API_PATH,
     PUBLIC_DATA_PORTAL_FILE_DOWNLOAD_PATH,
@@ -23,14 +24,6 @@ from backend.config.io import (
     SUPPORTED_UPLOAD_SUFFIXES,
 )
 from .text_encoding import detect_text_encoding
-
-
-@dataclass(frozen=True)
-class PreparedDataset:
-    display_name: str
-    path: Path
-    source_type: str
-    response_type: str | None = None
 
 
 @dataclass(frozen=True)

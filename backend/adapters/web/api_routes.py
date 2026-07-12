@@ -5,16 +5,14 @@ import tempfile
 from flask import Flask, Response, jsonify, request, send_file, stream_with_context
 from werkzeug.exceptions import HTTPException
 
-from backend.infrastructure.reporting.workbooks import write_batch_error_report
-
 from .analysis_support import (
     _download_name,
     _report_download_path,
 )
 from .analysis_execution import analyze_prepared_datasets, stream_analysis_events
 from .dataset_inputs import _prepare_request_datasets
+from .dependencies import WebAdapterDependencies
 from .error_support import UNEXPECTED_API_ERROR_MESSAGE
-from .pipeline_service import validation_output_dir
 from .request_utils import _request_options, _request_payload, _runtime_tmp_dir
 
 
@@ -43,7 +41,7 @@ def register_error_handlers(app: Flask) -> None:
         return UNEXPECTED_API_ERROR_MESSAGE, 500
 
 
-def register_api_routes(app: Flask) -> None:
+def register_api_routes(app: Flask, dependencies: WebAdapterDependencies) -> None:
     @app.get("/api/health")
     @app.get("/health")
     @app.get("/api/index")
@@ -53,11 +51,11 @@ def register_api_routes(app: Flask) -> None:
 
     @app.get("/api/reports/download")
     def download_report():
-        report_path = _report_download_path(request.args.get("path", ""))
+        report_path = _report_download_path(request.args.get("path", ""), dependencies=dependencies)
         return send_file(
             report_path,
             as_attachment=True,
-            download_name=_download_name(report_path.name),
+            download_name=_download_name(report_path.name, dependencies=dependencies),
             mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         )
 
@@ -69,9 +67,9 @@ def register_api_routes(app: Flask) -> None:
             return jsonify({"error": "results는 배열 형식이어야 합니다."}), 400
         if not any(item.get("ok") and item.get("result") for item in items if isinstance(item, dict)):
             return jsonify({"error": "리포트를 생성할 성공 결과가 없습니다."}), 400
-        report_path = write_batch_error_report(
+        report_path = dependencies.write_batch_error_report(
             items=[item for item in items if isinstance(item, dict)],
-            output_dir=validation_output_dir(),
+            output_dir=dependencies.validation_output_dir(),
         )
         return jsonify({"error_report_xlsx": report_path.name})
 
@@ -84,10 +82,11 @@ def register_api_routes(app: Flask) -> None:
         options = _request_options(payload)
 
         with tempfile.TemporaryDirectory(prefix="public_data_quality_upload_", dir=_runtime_tmp_dir()) as tmp_dir:
-            prepared_datasets = _prepare_request_datasets(payload, tmp_dir)
+            prepared_datasets = _prepare_request_datasets(payload, tmp_dir, dependencies=dependencies)
             payload, status_code = analyze_prepared_datasets(
                 prepared_datasets=prepared_datasets,
                 options=options,
+                dependencies=dependencies,
             )
             return jsonify(payload), status_code
 
@@ -99,7 +98,7 @@ def register_api_routes(app: Flask) -> None:
 
         tmp_manager = tempfile.TemporaryDirectory(prefix="public_data_quality_upload_", dir=_runtime_tmp_dir())
         try:
-            prepared_datasets = _prepare_request_datasets(payload, tmp_manager.name)
+            prepared_datasets = _prepare_request_datasets(payload, tmp_manager.name, dependencies=dependencies)
         except Exception:
             tmp_manager.cleanup()
             raise
@@ -109,6 +108,7 @@ def register_api_routes(app: Flask) -> None:
                 stream_analysis_events(
                     prepared_datasets=prepared_datasets,
                     options=options,
+                    dependencies=dependencies,
                     cleanup=tmp_manager.cleanup,
                 )
             ),

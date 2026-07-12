@@ -2,27 +2,15 @@ from __future__ import annotations
 
 from typing import Any
 
-try:
-    from backend.application.dto import PipelineState, require_dataset_meta
-    from backend.application.ports import JsonLLMPort
-    from backend.application.prompts.resolution import SEMANTIC_PROFILE_SYSTEM_PROMPT, semantic_profile_prompt
-    from backend.config.llm import (
-        LLM_SEMANTIC_PROFILE_CONFIDENCE_DEFAULT,
-        LLM_STRONG_FALLBACK_CONFIDENCE,
-    )
-    from backend.domain.entities.models import ColumnProfile
-except ImportError:  # pragma: no cover
-    if (__package__ or "").split(".", 1)[0] != "services":
-        raise
-    from backend.application.dto import PipelineState, require_dataset_meta
-    from backend.application.ports import JsonLLMPort
-    from backend.application.prompts.resolution import SEMANTIC_PROFILE_SYSTEM_PROMPT, semantic_profile_prompt
-    from backend.config.llm import (
-        LLM_SEMANTIC_PROFILE_CONFIDENCE_DEFAULT,
-        LLM_STRONG_FALLBACK_CONFIDENCE,
-    )
-    from backend.domain.entities.models import ColumnProfile
-from ..json_utils import parse_json_content
+from backend.application.shared import parse_json_content
+from backend.application.dto import PipelineState, require_dataset_meta
+from backend.application.ports import JsonLLMPort
+from backend.application.prompts.resolution import SEMANTIC_PROFILE_SYSTEM_PROMPT, semantic_profile_prompt
+from backend.config.llm import (
+    LLM_SEMANTIC_PROFILE_CONFIDENCE_DEFAULT,
+    LLM_STRONG_FALLBACK_CONFIDENCE,
+)
+from backend.domain.entities.models import ColumnProfile
 from .confidence import coerce_resolution_confidence
 
 

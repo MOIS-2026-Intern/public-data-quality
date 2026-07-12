@@ -3,7 +3,7 @@ from __future__ import annotations
 import re
 from collections import Counter
 
-from backend.config.column_rules import DATE_COLUMN_NAME_TOKENS, TIME_ONLY_COLUMN_NAME_TOKENS
+from ..shared.settings import DATE_COLUMN_NAME_TOKENS, TIME_ONLY_COLUMN_NAME_TOKENS
 from backend.domain.policies.columns.free_text import is_free_format_column as _core_is_free_format_column
 
 
