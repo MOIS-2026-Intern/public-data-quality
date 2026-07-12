@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections import Counter
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 
 from ..shared.findings import build_finding
@@ -41,7 +42,14 @@ def finding_key(finding) -> tuple[str, str, str, tuple[int, ...]]:
     )
 
 
-def value_rows(rows: list[dict[str, str]], column_name: str, target_value: str) -> list[int]:
+def value_rows(
+    rows: list[dict[str, str]],
+    column_name: str,
+    target_value: str,
+    value_row_indexes: Mapping[str, Sequence[int]] | None = None,
+) -> list[int]:
+    if value_row_indexes is not None:
+        return list(value_row_indexes.get(target_value, ()))
     indexes: list[int] = []
     for row_index, row in enumerate(rows, start=1):
         value = (row.get(column_name) or "").strip()
@@ -88,10 +96,14 @@ def apply_local_categorical_findings(
     rows: list[dict[str, str]],
     counter: Counter[str],
     findings: list,
+    value_row_indexes: Mapping[str, Sequence[int]] | None = None,
 ) -> LocalCategoricalFindingCounts:
     existing_finding_keys = {finding_key(finding) for finding in findings}
     if looks_free_text_column(column):
         return LocalCategoricalFindingCounts()
+
+    def row_indexes_for(target_value: str) -> list[int]:
+        return value_rows(rows, column.raw_name, target_value, value_row_indexes)
 
     normalization_pairs = (
         find_surface_normalization_pairs(counter)
@@ -106,7 +118,7 @@ def apply_local_categorical_findings(
             criterion_name="categorical_semantic_domain",
             rule_id="categorical_value_normalization",
             message=f"'{source}' 값은 '{target}'로 표면 형식을 표준화하는 것이 적절합니다.",
-            row_indexes=value_rows(rows, column.raw_name, source),
+            row_indexes=row_indexes_for(source),
             related_columns=[column.raw_name],
             evidence=[f"canonical:{canonical_normalization_key(source)}", "detector:surface_normalization"],
         )
@@ -131,7 +143,7 @@ def apply_local_categorical_findings(
                 f"'{source}' 값은 대표값 '{target}'와 매우 유사하지만 표기가 달라 "
                 "입력 오류 가능성이 있습니다."
             ),
-            row_indexes=value_rows(rows, column.raw_name, source),
+            row_indexes=row_indexes_for(source),
             related_columns=[column.raw_name],
             evidence=[f"matched_representative_value:{target}", "detector:compact_domain_variant"],
         )
@@ -151,7 +163,7 @@ def apply_local_categorical_findings(
             message=(
                 f"'{value}' 값은 불필요한 기호 또는 깨진 텍스트가 포함된 것으로 보입니다."
             ),
-            row_indexes=value_rows(rows, column.raw_name, value),
+            row_indexes=row_indexes_for(value),
             related_columns=[column.raw_name],
             evidence=["detector:malformed_text"],
         )
@@ -185,7 +197,7 @@ def apply_local_categorical_findings(
             criterion_name="categorical_semantic_domain",
             rule_id="categorical_value_out_of_domain",
             message=message,
-            row_indexes=value_rows(rows, column.raw_name, value),
+            row_indexes=row_indexes_for(value),
             related_columns=[column.raw_name],
             evidence=[f"detector:{detector}"],
         )
@@ -231,7 +243,7 @@ def apply_local_categorical_findings(
                 f"'{source}' 값은 '{target}' 값의 앞부분과 일치해 "
                 "입력 중 잘림 가능성이 있습니다."
             ),
-            row_indexes=value_rows(rows, column.raw_name, source),
+            row_indexes=row_indexes_for(source),
             related_columns=[column.raw_name],
             evidence=evidence,
         )

@@ -25,36 +25,6 @@ class LLMRoutingAgent(BaseAgent):
     def __init__(self, column_resolver: "LLMColumnResolver | None" = None):
         self.column_resolver = column_resolver
 
-    def _route_column(
-        self,
-        *,
-        state: PipelineState,
-        column: ColumnProfile,
-        use_llm: bool,
-    ) -> tuple[ColumnProfile, str, str, str, str, str]:
-        column = apply_rule_fallback(column)
-        route_source = "rule_fallback"
-        llm_error = ""
-        llm_model = ""
-        llm_stage = ""
-        llm_escalated = ""
-        if not use_llm:
-            return column, route_source, llm_error, llm_model, llm_stage, llm_escalated
-
-        payload = self.column_resolver.resolve(state, column)
-        if payload:
-            column = apply_llm_route(column, payload)
-            route_source = f"llm:{payload.get('_llm_stage', 'fast')}"
-            llm_model = str(payload.get("_llm_model", ""))
-            llm_stage = str(payload.get("_llm_stage", ""))
-            llm_escalated = str(payload.get("_llm_escalated", ""))
-            return column, route_source, llm_error, llm_model, llm_stage, llm_escalated
-
-        llm_error = self.column_resolver.last_error
-        llm_model = getattr(self.column_resolver, "last_model_name", "")
-        llm_stage = getattr(self.column_resolver, "last_stage", "")
-        return column, route_source, llm_error, llm_model, llm_stage, llm_escalated
-
     def _trace_routed_column(
         self,
         *,
@@ -115,14 +85,27 @@ class LLMRoutingAgent(BaseAgent):
             and self.column_resolver is not None
             and self.column_resolver.enabled
         )
+        resolved_payloads = self.column_resolver.resolve_many(state, data.columns) if use_llm else {}
         relationship_candidates: list[dict[str, Any]] | None = None
 
         for column in data.columns:
-            column, route_source, llm_error, llm_model, llm_stage, llm_escalated = self._route_column(
-                state=state,
-                column=column,
-                use_llm=use_llm,
-            )
+            column = apply_rule_fallback(column)
+            route_source = "rule_fallback"
+            llm_error = ""
+            llm_model = ""
+            llm_stage = ""
+            llm_escalated = ""
+            payload = resolved_payloads.get(column.raw_name)
+            if use_llm and payload:
+                column = apply_llm_route(column, payload)
+                route_source = f"llm:{payload.get('_llm_stage', 'fast')}"
+                llm_model = str(payload.get("_llm_model", ""))
+                llm_stage = str(payload.get("_llm_stage", ""))
+                llm_escalated = str(payload.get("_llm_escalated", ""))
+            elif use_llm:
+                llm_error = self.column_resolver.last_error
+                llm_model = getattr(self.column_resolver, "last_model_name", "")
+                llm_stage = getattr(self.column_resolver, "last_stage", "")
             self._trace_routed_column(
                 traces=traces,
                 column=column,

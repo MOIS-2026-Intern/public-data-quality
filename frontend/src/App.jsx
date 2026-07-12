@@ -64,6 +64,26 @@ function analysisPayload(items) {
   };
 }
 
+function isAnalyzePayload(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return false;
+  }
+  return ["batch", "summary", "results", "result", "error"].some((key) => key in value);
+}
+
+function resolveAnalyzePayload(candidate) {
+  if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) {
+    return null;
+  }
+  if (candidate.type === "final") {
+    return isAnalyzePayload(candidate.payload) ? candidate.payload : null;
+  }
+  if (isAnalyzePayload(candidate.payload)) {
+    return candidate.payload;
+  }
+  return isAnalyzePayload(candidate) ? candidate : null;
+}
+
 function compactBatchItemsForReport(items) {
   return items.map((item) => {
     if (!item.ok || !item.result) {
@@ -760,10 +780,33 @@ function App() {
     }
   }
 
+  function consumeAnalyzeEvent(candidate, onStreamEvent) {
+    if (candidate?.type) {
+      onStreamEvent(candidate);
+    }
+    return resolveAnalyzePayload(candidate);
+  }
+
+  async function parseAnalyzeResponseText(responseText, onStreamEvent = handleStreamEvent) {
+    const trimmed = responseText.trim();
+    if (!trimmed) {
+      return null;
+    }
+
+    let finalPayload = null;
+    for (const line of trimmed.split(/\r?\n/)) {
+      if (!line.trim()) continue;
+      const payload = consumeAnalyzeEvent(JSON.parse(line), onStreamEvent);
+      if (payload) {
+        finalPayload = payload;
+      }
+    }
+    return finalPayload;
+  }
+
   async function parseAnalyzeStream(response, onStreamEvent = handleStreamEvent) {
     if (!response.body) {
-      const responseText = await response.text();
-      return responseText ? JSON.parse(responseText) : null;
+      return parseAnalyzeResponseText(await response.text(), onStreamEvent);
     }
 
     const reader = response.body.getReader();
@@ -783,21 +826,24 @@ function App() {
       for (const line of lines) {
         if (!line.trim()) continue;
         const event = JSON.parse(line);
-        onStreamEvent(event);
+        const payload = consumeAnalyzeEvent(event, onStreamEvent);
         if (event.type === "file_error" && event.error) {
           streamError = event.error;
         }
-        if (event.type === "final") {
-          finalPayload = event.payload;
+        if (payload) {
+          finalPayload = payload;
         }
       }
     }
 
     if (buffer.trim()) {
       const event = JSON.parse(buffer);
-      onStreamEvent(event);
-      if (event.type === "final") {
-        finalPayload = event.payload;
+      const payload = consumeAnalyzeEvent(event, onStreamEvent);
+      if (event.type === "file_error" && event.error) {
+        streamError = event.error;
+      }
+      if (payload) {
+        finalPayload = payload;
       }
     }
 

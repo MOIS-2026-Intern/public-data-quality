@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from functools import lru_cache
 import re
 from datetime import datetime
 
@@ -12,6 +13,11 @@ def parse_datetime(value: str) -> datetime | None:
         return None
     if re.fullmatch(r"\d{4}\.0+", candidate):
         candidate = candidate.split(".", 1)[0]
+    return _parse_datetime_candidate(candidate)
+
+
+@lru_cache(maxsize=32768)
+def _parse_datetime_candidate(candidate: str) -> datetime | None:
     for pattern in DATE_PATTERNS:
         try:
             parsed = datetime.strptime(candidate, pattern)

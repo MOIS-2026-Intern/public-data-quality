@@ -9,7 +9,7 @@ from backend.application.prompts.resolution import (
     RELATIONSHIP_ROUTING_SYSTEM_PROMPT,
     SCHEMA_ROUTING_SYSTEM_PROMPT,
     relationship_routing_prompt,
-    schema_routing_prompt,
+    schema_routing_batch_prompt,
 )
 from backend.config.llm import LLM_STRONG_FALLBACK_CONFIDENCE
 from backend.config.validation import TAG_RULE_MAP, VALIDATION_CRITERIA
@@ -126,6 +126,13 @@ class LLMColumnResolver:
             return True
         return False
 
+    @classmethod
+    def _routing_batch_needs_strong(cls, payload: dict[str, Any]) -> bool:
+        columns = payload.get("columns")
+        if not isinstance(columns, list) or not columns:
+            return True
+        return any(not isinstance(column_payload, dict) or cls._routing_needs_strong(column_payload) for column_payload in columns)
+
     @staticmethod
     def _relationship_needs_strong(payload: dict[str, Any]) -> bool:
         candidates = payload.get("relationship_candidates")
@@ -141,9 +148,12 @@ class LLMColumnResolver:
         return bool(confidences) and max(confidences) < LLM_STRONG_FALLBACK_CONFIDENCE
 
     def resolve(self, state: PipelineState, column: ColumnProfile) -> dict[str, Any] | None:
+        return self.resolve_many(state, [column]).get(column.raw_name)
+
+    def resolve_many(self, state: PipelineState, columns: list[ColumnProfile]) -> dict[str, dict[str, Any]]:
         llm = self._client()
-        if llm is None:
-            return None
+        if llm is None or not columns:
+            return {}
 
         dataset_meta = require_dataset_meta(state)
         data = pipeline_data(state)
@@ -156,25 +166,53 @@ class LLMColumnResolver:
             }
         )
         all_columns = [candidate.raw_name for candidate in data.columns]
-        return self._invoke_json_payload(
-            schema_routing_prompt(
+        payload = self._invoke_json_payload(
+            schema_routing_batch_prompt(
                 dataset_name=dataset_meta.dataset_name,
                 provider_name=dataset_meta.provider_name,
                 keywords=dataset_meta.keywords,
                 data_format=dataset_meta.data_format,
                 all_columns=all_columns,
-                column_raw_name=column.raw_name,
-                column_normalized_name=column.normalized_name,
-                column_source=column.source,
-                column_inferred_type=column.inferred_primitive_type,
-                sample_values=column.sample_values,
-                top_values=column.top_values,
+                columns=[
+                    {
+                        "raw_name": column.raw_name,
+                        "normalized_name": column.normalized_name,
+                        "source": column.source,
+                        "inferred_type": column.inferred_primitive_type,
+                        "sample_values": column.sample_values,
+                        "top_values": column.top_values,
+                    }
+                    for column in columns
+                ],
                 allowed_tags=allowed_tags,
                 allowed_rules=allowed_rules,
             ),
             system_prompt=SCHEMA_ROUTING_SYSTEM_PROMPT,
-            difficult=self._routing_needs_strong,
+            difficult=self._routing_batch_needs_strong,
         )
+        if payload is None:
+            return {}
+        allowed_raw_names = {column.raw_name for column in columns}
+        return self._sanitize_routing_payloads(payload, allowed_raw_names)
+
+    @staticmethod
+    def _sanitize_routing_payloads(
+        payload: dict[str, Any],
+        allowed_raw_names: set[str],
+    ) -> dict[str, dict[str, Any]]:
+        columns = payload.get("columns")
+        if not isinstance(columns, list):
+            return {}
+
+        sanitized: dict[str, dict[str, Any]] = {}
+        for item in columns:
+            if not isinstance(item, dict):
+                continue
+            raw_name = str(item.get("raw_name") or "").strip()
+            if not raw_name or raw_name not in allowed_raw_names or raw_name in sanitized:
+                continue
+            sanitized[raw_name] = item
+        return sanitized
 
     def resolve_relationships(self, state: PipelineState, columns: list[ColumnProfile]) -> list[dict[str, Any]]:
         llm = self._client()

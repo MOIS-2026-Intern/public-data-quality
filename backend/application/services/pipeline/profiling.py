@@ -32,6 +32,10 @@ from .tracing import pipeline_trace
 ProfileStats = dict[str, dict]
 KOREAN_RE = re.compile(r"[가-힣]")
 CODE_LIKE_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_]*$|^[A-Z0-9_-]+$")
+NUMERIC_CANDIDATE_RE = re.compile(r"[-+0-9.,]+$")
+DATE_SEPARATED_CANDIDATE_RE = re.compile(
+    r"^\d{4}(?:[-./]\d{1,2}(?:[-./]\d{1,2})?)?(?: \d{1,2}:\d{1,2}(?::\d{1,2})?)?$"
+)
 LABEL_TOKEN_RE = re.compile(
     r"(코드|번호|일련|관리|주소|상세|명칭|이름|시설|수용|인원|면적|구분|여부|일자|"
     r"날짜|전화|위도|경도|좌표|지역|행정|법정|건물|도로명|지번|유형|상태|내용|설명)$"
@@ -345,8 +349,11 @@ def _set_inferred_primitive_type(column: ColumnProfile, non_empty: int) -> None:
 
 
 def _parse_finite_number(value: str) -> float | None:
+    candidate = value.strip()
+    if not candidate or not NUMERIC_CANDIDATE_RE.fullmatch(candidate):
+        return None
     try:
-        parsed = float(value.replace(",", ""))
+        parsed = float(candidate.replace(",", ""))
     except ValueError:
         return None
     return parsed if math.isfinite(parsed) else None
@@ -363,4 +370,17 @@ def _append_numeric_value(bucket: dict, value: str) -> None:
 
 
 def _is_date(value: str) -> bool:
-    return parse_datetime(value) is not None
+    candidate = value.strip()
+    if not candidate or not _is_date_candidate(candidate):
+        return False
+    return parse_datetime(candidate) is not None
+
+
+def _is_date_candidate(candidate: str) -> bool:
+    if candidate.isdigit():
+        return len(candidate) in {4, 6, 8, 14}
+    if re.fullmatch(r"\d{4}\.0+", candidate):
+        return True
+    if "년" in candidate:
+        return bool(re.fullmatch(r"\d{4}년", candidate))
+    return bool(DATE_SEPARATED_CANDIDATE_RE.fullmatch(candidate))

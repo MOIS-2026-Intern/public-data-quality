@@ -127,6 +127,30 @@ def _analysis_payload(
     }
 
 
+def _attach_batch_report_path(
+    payload: AnalysisPayload,
+    *,
+    items: list[AnalysisItem],
+    dependencies: WebAdapterDependencies | None = None,
+) -> AnalysisPayload:
+    if not payload.get("batch"):
+        return payload
+
+    summary = payload.get("summary")
+    if not isinstance(summary, dict) or summary.get("error_report_xlsx"):
+        return payload
+    if not any(item.get("ok") and isinstance(item.get("result"), dict) for item in items):
+        return payload
+
+    resolved_dependencies = _resolve_dependencies(dependencies)
+    report_path = resolved_dependencies.write_batch_error_report(
+        items=[item for item in items if isinstance(item, dict)],
+        output_dir=resolved_dependencies.validation_output_dir(),
+    )
+    summary["error_report_xlsx"] = report_path.name
+    return payload
+
+
 def _progress_event(event_type: str, **payload) -> bytes:
     return (json.dumps({"type": event_type, **payload}, ensure_ascii=False) + "\n").encode("utf-8")
 

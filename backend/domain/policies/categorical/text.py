@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from functools import lru_cache
 import re
 from typing import Any
 
@@ -151,7 +152,12 @@ def is_specific_row_context_reason(reason: str) -> bool:
 
 
 def normalized_text(value: str) -> str:
-    return re.sub(r"\s+", "", str(value or "")).strip()
+    return _normalized_text_cached(str(value or ""))
+
+
+@lru_cache(maxsize=65536)
+def _normalized_text_cached(value: str) -> str:
+    return re.sub(r"\s+", "", value).strip()
 
 
 def is_numeric_like_value(value: str) -> bool:

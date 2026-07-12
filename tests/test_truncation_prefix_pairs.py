@@ -222,3 +222,34 @@ def test_institution_classification_column_does_not_enable_generic_prefix_trunca
 
     assert counts.truncated_count == 0
     assert findings == []
+
+
+def test_local_findings_accept_precomputed_row_indexes() -> None:
+    column = ColumnProfile(
+        raw_name="시설명",
+        normalized_name="시설명",
+        source="response",
+        semantic_tags=["name"],
+        inferred_primitive_type="text",
+    )
+    rows = [
+        {"시설명": "서울시립"},
+        {"시설명": "서울시립도서관"},
+        {"시설명": "서울시립도서관"},
+    ]
+    findings = []
+
+    counts = apply_local_categorical_findings(
+        column=column,
+        rows=rows,
+        counter=Counter(row["시설명"] for row in rows),
+        findings=findings,
+        value_row_indexes={
+            "서울시립": [1],
+            "서울시립도서관": [2, 3],
+        },
+    )
+
+    assert counts.truncated_count == 1
+    assert len(findings) == 1
+    assert findings[0].row_indexes == [1]

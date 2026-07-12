@@ -17,6 +17,7 @@ from backend.application.services.verification.final_finding_verifier import (
     _apply_final_verification,
     _apply_protected_final_verification,
     _finding_candidates,
+    _group_candidates,
     _is_protected_deterministic_issue,
     _keeps_issue,
     _occurrence_count,
@@ -59,8 +60,21 @@ class FinalFindingVerificationAgent(BaseAgent):
             traces.append(self.trace(action="final_verify_findings", detail="issue_findings=0"))
             return update_pipeline_result(state, findings=findings, agent_traces=traces)
 
-        limited_candidates = candidates[:MAX_FINAL_VERIFICATION_CANDIDATES]
-        limited_candidate_ids = {str(candidate["id"]) for candidate in limited_candidates}
+        grouped_candidates = _group_candidates(candidates)
+        limited_candidates = grouped_candidates[:MAX_FINAL_VERIFICATION_CANDIDATES]
+        grouped_finding_ids = {
+            str(candidate.get("id") or ""): [
+                str(finding_id).strip()
+                for finding_id in candidate.get("finding_ids") or [candidate.get("id")]
+                if str(finding_id).strip()
+            ]
+            for candidate in limited_candidates
+        }
+        limited_candidate_ids = {
+            finding_id
+            for finding_ids in grouped_finding_ids.values()
+            for finding_id in finding_ids
+        }
         dataset_meta = require_dataset_meta(state)
         payload = self.verifier.verify(
             dataset_name=dataset_meta.dataset_name,
@@ -81,6 +95,12 @@ class FinalFindingVerificationAgent(BaseAgent):
             return update_pipeline_result(state, findings=findings, agent_traces=traces)
 
         decisions = _verification_decisions(payload)
+        decisions_by_finding_id = {
+            finding_id: decisions[group_id]
+            for group_id, finding_ids in grouped_finding_ids.items()
+            if group_id in decisions
+            for finding_id in finding_ids
+        }
         verified_findings: list[ValidationFinding] = []
         suppressed = 0
         for index, finding in enumerate(findings):
@@ -92,7 +112,7 @@ class FinalFindingVerificationAgent(BaseAgent):
                 verified_findings.append(_apply_protected_final_verification(finding))
                 continue
 
-            decision = decisions.get(f"f{index}")
+            decision = decisions_by_finding_id.get(f"f{index}")
             if decision is None:
                 if f"f{index}" not in limited_candidate_ids:
                     verified_findings.append(finding)
@@ -110,7 +130,8 @@ class FinalFindingVerificationAgent(BaseAgent):
             self.trace(
                 action="final_verify_findings",
                 detail=(
-                    f"candidates={len(candidates)}, verified={len(verified_findings)}, "
+                    f"candidates={len(candidates)}, grouped_candidates={len(grouped_candidates)}, "
+                    f"verified={len(verified_findings)}, "
                     f"suppressed_occurrences={suppressed}, model={self.verifier.last_model_name}"
                 ),
             )

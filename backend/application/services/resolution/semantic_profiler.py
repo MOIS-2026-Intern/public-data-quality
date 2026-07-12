@@ -5,7 +5,10 @@ from typing import Any
 from backend.application.shared import parse_json_content
 from backend.application.dto import PipelineState, require_dataset_meta
 from backend.application.ports import JsonLLMPort
-from backend.application.prompts.resolution import SEMANTIC_PROFILE_SYSTEM_PROMPT, semantic_profile_prompt
+from backend.application.prompts.resolution import (
+    SEMANTIC_PROFILE_SYSTEM_PROMPT,
+    semantic_profile_batch_prompt,
+)
 from backend.config.llm import (
     LLM_SEMANTIC_PROFILE_CONFIDENCE_DEFAULT,
     LLM_STRONG_FALLBACK_CONFIDENCE,
@@ -116,32 +119,60 @@ class LLMSemanticProfiler:
         return coerce_resolution_confidence(payload.get("confidence")) < LLM_STRONG_FALLBACK_CONFIDENCE
 
     def profile(self, state: PipelineState, column: ColumnProfile) -> dict[str, Any] | None:
+        return self.profile_many(state, [column]).get(column.raw_name)
+
+    def profile_many(self, state: PipelineState, columns: list[ColumnProfile]) -> dict[str, dict[str, Any]]:
         llm = self._client()
-        if llm is None:
-            return None
+        if llm is None or not columns:
+            return {}
 
         dataset_meta = require_dataset_meta(state)
         payload = self._invoke_json_payload(
-            semantic_profile_prompt(
+            semantic_profile_batch_prompt(
                 dataset_name=dataset_meta.dataset_name,
                 provider_name=dataset_meta.provider_name,
                 data_format=dataset_meta.data_format,
-                column_raw_name=column.raw_name,
-                column_normalized_name=column.normalized_name,
-                semantic_tags=column.semantic_tags,
-                column_inferred_type=column.inferred_primitive_type,
-                sample_values=column.sample_values,
-                top_values=column.top_values,
+                columns=[
+                    {
+                        "raw_name": column.raw_name,
+                        "normalized_name": column.normalized_name,
+                        "semantic_tags": column.semantic_tags,
+                        "inferred_type": column.inferred_primitive_type,
+                        "sample_values": column.sample_values,
+                        "top_values": column.top_values,
+                    }
+                    for column in columns
+                ],
             ),
             system_prompt=SEMANTIC_PROFILE_SYSTEM_PROMPT,
         )
         if payload is None:
-            return None
-        confidence = payload.get("confidence")
-        if confidence is None:
-            payload["confidence"] = LLM_SEMANTIC_PROFILE_CONFIDENCE_DEFAULT
-        if payload.get("label"):
-            payload["label"] = str(payload["label"]).strip()
-        if payload.get("description"):
-            payload["description"] = str(payload["description"]).strip()
-        return payload
+            return {}
+        allowed_raw_names = {column.raw_name for column in columns}
+        return self._sanitize_profiles(payload, allowed_raw_names)
+
+    @staticmethod
+    def _sanitize_profiles(
+        payload: dict[str, Any],
+        allowed_raw_names: set[str],
+    ) -> dict[str, dict[str, Any]]:
+        columns = payload.get("columns")
+        if not isinstance(columns, list):
+            return {}
+
+        sanitized: dict[str, dict[str, Any]] = {}
+        for item in columns:
+            if not isinstance(item, dict):
+                continue
+            raw_name = str(item.get("raw_name") or "").strip()
+            if not raw_name or raw_name not in allowed_raw_names or raw_name in sanitized:
+                continue
+            confidence = item.get("confidence")
+            if confidence is None:
+                item["confidence"] = LLM_SEMANTIC_PROFILE_CONFIDENCE_DEFAULT
+            if item.get("label"):
+                item["label"] = str(item["label"]).strip()
+            if item.get("description"):
+                item["description"] = str(item["description"]).strip()
+            sanitized[raw_name] = item
+        return sanitized

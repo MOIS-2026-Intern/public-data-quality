@@ -13,6 +13,7 @@ from .error_support import (
 from .analysis_support import (
     AnalysisItem,
     AnalysisPayload,
+    _attach_batch_report_path,
     _analyze_prepared_dataset,
     _analysis_payload,
     _analysis_result_payload,
@@ -53,7 +54,14 @@ def analyze_prepared_datasets(
     ]
     summary = _batch_summary(items)
     status_code = 200 if summary["success_count"] else 400
-    return _analysis_payload(items, summary=summary), status_code
+    return (
+        _attach_batch_report_path(
+            _analysis_payload(items, summary=summary),
+            items=items,
+            dependencies=resolved_dependencies,
+        ),
+        status_code,
+    )
 
 
 def analyze_batch_prepared_datasets(
@@ -130,7 +138,7 @@ def stream_analysis_events(
             current=total_files,
             total=total_files,
             message="분석 완료",
-            payload=_final_payload(items),
+            payload=_final_payload(items, dependencies=resolved_dependencies),
         )
     finally:
         cleanup()
@@ -270,8 +278,16 @@ def _dataset_finished_event(
     return _progress_event(event_type, **payload)
 
 
-def _final_payload(items: list[AnalysisItem]) -> AnalysisPayload:
-    return _analysis_payload(items)
+def _final_payload(
+    items: list[AnalysisItem],
+    *,
+    dependencies: WebAdapterDependencies,
+) -> AnalysisPayload:
+    return _attach_batch_report_path(
+        _analysis_payload(items),
+        items=items,
+        dependencies=dependencies,
+    )
 
 
 def _success_item(filename: str, result: dict[str, Any]) -> AnalysisItem:

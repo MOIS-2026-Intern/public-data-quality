@@ -67,6 +67,52 @@ Instructions:
 """
 
 
+def schema_routing_batch_prompt(
+    *,
+    dataset_name: str,
+    provider_name: str,
+    keywords: list[str],
+    data_format: str,
+    all_columns: list[str],
+    columns: list[dict[str, Any]],
+    allowed_tags: list[str],
+    allowed_rules: list[str],
+) -> str:
+    return f"""
+You are a public-data schema routing agent.
+Return strict JSON only with one key:
+- columns: list of objects
+
+Each column object must have:
+- raw_name: string, exactly matching one raw_name from the input columns
+- normalized_name: string
+- semantic_tags: list[string]
+- assigned_rules: list[string]
+- confidence: float between 0 and 1
+- reason: short Korean sentence
+
+Dataset:
+- name: {dataset_name}
+- provider: {provider_name}
+- keywords: {", ".join(keywords)}
+- format: {data_format}
+- all_columns: {json.dumps(all_columns, ensure_ascii=False)}
+
+Target columns:
+{json.dumps(columns, ensure_ascii=False)}
+
+Instructions:
+- Infer semantic_tags and assigned_rules from each column meaning and dataset context.
+- semantic_tags must use only these values: {allowed_tags}
+- assigned_rules must use only these values: {allowed_rules}
+- Columns whose names end with 명, 명칭, 기관명, 시설명, 경찰서명, 부서명, or 담당자명 are descriptive names, not row identifiers.
+- Do not assign identifier semantic_tags or duplicate_data rules to descriptive name columns unless the column name explicitly contains 고유번호, 식별번호, 일련번호, 관리번호, ID, or 아이디.
+- Return exactly one result object per input raw_name.
+- Use only raw_name values that appear in Target columns.
+- Output JSON only.
+"""
+
+
 def relationship_routing_prompt(
     *,
     dataset_name: str,
@@ -150,4 +196,44 @@ Column:
 - inferred_type: {column_inferred_type}
 - sample_values: {sample_values}
 - top_values: {top_values}
+"""
+
+
+def semantic_profile_batch_prompt(
+    *,
+    dataset_name: str,
+    provider_name: str,
+    data_format: str,
+    columns: list[dict[str, Any]],
+) -> str:
+    return f"""
+You are a semantic profiling agent for Korean public datasets.
+Return strict JSON only with one key:
+- columns: list of objects
+
+Each object must have:
+- raw_name: string, exactly matching one raw_name from the input columns
+- label: short semantic role name in Korean
+- description: one sentence in Korean about the business meaning of this column
+- confidence: float between 0 and 1
+
+Rules:
+- label must be written in Korean only
+- description must be written in Korean only
+- do not use English unless the original column itself is an English acronym that must remain unchanged
+- prefer concise public-data terminology
+- only explain what this column represents or means in the dataset
+- do not claim that a problem exists unless it is visible in the provided samples
+- do not mention standard term mapping
+- return exactly one result object per input raw_name
+- use only raw_name values that appear in the input columns
+- output JSON only
+
+Dataset:
+- name: {dataset_name}
+- provider: {provider_name}
+- format: {data_format}
+
+Columns:
+{json.dumps(columns, ensure_ascii=False)}
 """

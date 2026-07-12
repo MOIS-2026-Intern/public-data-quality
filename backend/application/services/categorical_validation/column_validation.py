@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections import Counter
+from dataclasses import dataclass
 from typing import Any
 
 from backend.config.categorical import (
@@ -13,11 +14,19 @@ from backend.domain.entities.models import ColumnProfile
 from backend.domain.policies.categorical import looks_free_text_column
 
 __all__ = [
+    "ColumnValueIndex",
     "column_value_counter",
+    "index_column_values",
     "is_candidate_column",
     "llm_skip_reason",
     "validation_values",
 ]
+
+
+@dataclass(frozen=True)
+class ColumnValueIndex:
+    counter: Counter[str]
+    row_indexes: dict[str, list[int]]
 
 
 def is_candidate_column(column: ColumnProfile) -> bool:
@@ -50,9 +59,15 @@ def validation_values(counter: Counter[str]) -> list[dict[str, Any]]:
 
 
 def column_value_counter(rows: list[dict[str, str]], column_name: str) -> Counter[str]:
+    return index_column_values(rows, column_name).counter
+
+
+def index_column_values(rows: list[dict[str, str]], column_name: str) -> ColumnValueIndex:
     counter: Counter[str] = Counter()
-    for row in rows:
+    row_indexes: dict[str, list[int]] = {}
+    for row_index, row in enumerate(rows, start=1):
         value = (row.get(column_name) or "").strip()
         if value:
             counter[value] += 1
-    return counter
+            row_indexes.setdefault(value, []).append(row_index)
+    return ColumnValueIndex(counter=counter, row_indexes=row_indexes)

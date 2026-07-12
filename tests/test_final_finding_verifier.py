@@ -65,6 +65,30 @@ class SuppressingVerifier:
         }
 
 
+class GroupingVerifier:
+    enabled = True
+    last_error = ""
+    last_response_preview = ""
+    last_model_name = "fake-strong"
+
+    def __init__(self) -> None:
+        self.candidates = []
+
+    def verify(self, *, dataset_name, provider_name, candidates):
+        self.candidates = candidates
+        return {
+            "verified_findings": [
+                {
+                    "id": candidates[0]["id"],
+                    "keep": False,
+                    "reason": "같은 유형의 후보로 묶였지만 근거가 부족합니다.",
+                    "confidence": 0.40,
+                    "message": "",
+                }
+            ]
+        }
+
+
 def test_final_finding_verifier_keeps_only_llm_confirmed_issues() -> None:
     findings = [
         build_finding(
@@ -221,3 +245,44 @@ def test_final_verification_prompt_treats_amount_parse_failures_semantically() -
     assert "not a pure number" in prompt
     assert "parenthesized options" in prompt
     assert "deleted or unavailable status values" in prompt
+
+
+def test_final_finding_verifier_groups_duplicate_candidates() -> None:
+    verifier = GroupingVerifier()
+    findings = [
+        build_finding(
+            column_name="기준일자",
+            severity="warning",
+            category_group="domain_validity",
+            criterion_name="date_domain",
+            message="날짜 형식이 올바르지 않습니다.",
+            row_indexes=[1],
+            evidence=["detector:test"],
+        ),
+        build_finding(
+            column_name="기준일자",
+            severity="warning",
+            category_group="domain_validity",
+            criterion_name="date_domain",
+            message="날짜 형식이 올바르지 않습니다.",
+            row_indexes=[2],
+            evidence=["detector:test"],
+        ),
+    ]
+
+    result = FinalFindingVerificationAgent(verifier=verifier).run(
+        {
+            "use_llm_agents": True,
+            "dataset_meta": DatasetMeta(dataset_id="d", dataset_name="테스트", provider_name="기관"),
+            "validation_rows": [
+                {"기준일자": "2026-99-99"},
+                {"기준일자": "2026-99-99"},
+            ],
+            "findings": findings,
+            "agent_traces": [],
+        }
+    )
+
+    assert len(verifier.candidates) == 1
+    assert verifier.candidates[0]["finding_ids"] == ["f0", "f1"]
+    assert result["findings"] == []

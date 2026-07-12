@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from bisect import bisect_left
 import re
 from collections import Counter
 
@@ -219,41 +220,26 @@ def is_institution_suffix_completion(short_norm: str, long_norm: str) -> bool:
 
 
 def find_institution_suffix_completion_pairs(counter: Counter[str]) -> list[tuple[str, str]]:
-    values = [value.strip() for value in counter if value and value.strip()]
-    normalized_values = {
-        value: normalized_text(value)
-        for value in values
-        if normalized_text(value) and not is_numeric_like_value(normalized_text(value))
-    }
+    normalized_values, values_by_normalized, _ = _normalized_counter_values(counter)
     pairs: list[tuple[str, str]] = []
     for source, source_norm in normalized_values.items():
         target_norm = INSTITUTION_SUFFIX_COMPLETIONS.get(source_norm)
         if not target_norm:
             continue
-        for target, candidate_norm in normalized_values.items():
-            if source == target:
-                continue
-            if candidate_norm == target_norm:
+        for target in values_by_normalized.get(target_norm, ()):
+            if source != target:
                 pairs.append((source, target))
     return sorted(set(pairs))
 
 
 def find_truncated_value_pairs(counter: Counter[str]) -> list[tuple[str, str]]:
-    values = [value.strip() for value in counter if value and value.strip()]
+    normalized_values, values_by_normalized, sorted_normalized_values = _normalized_counter_values(counter)
     candidate_pairs: list[tuple[str, str]] = []
 
-    for short_value in values:
-        short_norm = normalized_text(short_value)
+    for short_value, short_norm in normalized_values.items():
         if len(short_norm) < SHORT_KOREAN_PREFIX_LEN:
             continue
-        if is_numeric_like_value(short_norm):
-            continue
-        for long_value in values:
-            if short_value == long_value:
-                continue
-            long_norm = normalized_text(long_value)
-            if is_numeric_like_value(long_norm):
-                continue
+        for long_norm in _prefixed_normalized_values(short_norm, sorted_normalized_values):
             if len(long_norm) < len(short_norm) + 1:
                 continue
             if short_norm == long_norm:
@@ -276,12 +262,16 @@ def find_truncated_value_pairs(counter: Counter[str]) -> list[tuple[str, str]]:
                 continue
             is_single_char_completion = is_single_char_entity_completion(short_norm, long_norm)
             is_institution_completion = is_institution_suffix_completion(short_norm, long_norm)
-            if counter[long_value] <= counter[short_value] and not (
-                is_single_char_completion and counter[long_value] == counter[short_value]
-                or is_institution_completion
-            ):
-                continue
-            candidate_pairs.append((short_value, long_value))
+            short_count = counter[short_value]
+            for long_value in values_by_normalized.get(long_norm, ()):
+                if short_value == long_value:
+                    continue
+                if counter[long_value] <= short_count and not (
+                    is_single_char_completion and counter[long_value] == short_count
+                    or is_institution_completion
+                ):
+                    continue
+                candidate_pairs.append((short_value, long_value))
 
     unique_pairs = sorted(set(candidate_pairs))
     long_values_by_short: dict[str, set[str]] = {}
@@ -343,3 +333,32 @@ def find_truncated_value_pairs(counter: Counter[str]) -> list[tuple[str, str]]:
             institution_pairs.append((short_value, long_value))
 
     return sorted(set(one_to_one_pairs + fallback_pairs + institution_pairs))
+
+
+def _normalized_counter_values(
+    counter: Counter[str],
+) -> tuple[dict[str, str], dict[str, list[str]], list[str]]:
+    normalized_values: dict[str, str] = {}
+    values_by_normalized: dict[str, list[str]] = {}
+
+    for raw_value in counter:
+        value = raw_value.strip()
+        if not value:
+            continue
+        normalized_value = normalized_text(value)
+        if not normalized_value or is_numeric_like_value(normalized_value):
+            continue
+        normalized_values[value] = normalized_value
+        values_by_normalized.setdefault(normalized_value, []).append(value)
+
+    return normalized_values, values_by_normalized, sorted(values_by_normalized)
+
+
+def _prefixed_normalized_values(prefix: str, sorted_values: list[str]):
+    index = bisect_left(sorted_values, prefix)
+    while index < len(sorted_values):
+        candidate = sorted_values[index]
+        if not candidate.startswith(prefix):
+            break
+        yield candidate
+        index += 1

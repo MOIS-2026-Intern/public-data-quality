@@ -87,11 +87,68 @@ def _finding_candidates(
     return sorted(candidates, key=_candidate_priority)
 
 
+def _group_candidates(candidates: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    grouped: dict[tuple[Any, ...], dict[str, Any]] = {}
+    ordered_keys: list[tuple[Any, ...]] = []
+
+    for candidate in candidates:
+        key = _candidate_group_key(candidate)
+        grouped_candidate = grouped.get(key)
+        if grouped_candidate is None:
+            grouped_candidate = {
+                **candidate,
+                "finding_ids": [str(candidate.get("id") or "")],
+                "candidate_count": 1,
+            }
+            grouped[key] = grouped_candidate
+            ordered_keys.append(key)
+            continue
+
+        grouped_candidate["finding_ids"].append(str(candidate.get("id") or ""))
+        grouped_candidate["candidate_count"] = int(grouped_candidate.get("candidate_count") or 0) + 1
+        grouped_candidate["sample_rows"] = _merge_group_sample_rows(
+            grouped_candidate.get("sample_rows") or [],
+            candidate.get("sample_rows") or [],
+        )
+
+    return [grouped[key] for key in ordered_keys]
+
+
 def _candidate_priority(candidate: dict[str, Any]) -> tuple[int, str]:
     rule_id = str(candidate.get("rule_id") or "")
     if rule_id == "amount_domain":
         return (0, str(candidate.get("id") or ""))
     return (1, str(candidate.get("id") or ""))
+
+
+def _candidate_group_key(candidate: dict[str, Any]) -> tuple[Any, ...]:
+    return (
+        str(candidate.get("column_name") or ""),
+        str(candidate.get("rule_id") or ""),
+        str(candidate.get("message") or ""),
+        tuple(str(value).strip() for value in candidate.get("related_columns") or []),
+        tuple(str(value).strip() for value in candidate.get("evidence") or []),
+        tuple(_sample_row_signature(row) for row in candidate.get("sample_rows") or []),
+    )
+
+
+def _merge_group_sample_rows(existing_rows: list[dict[str, Any]], new_rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    merged = list(existing_rows)
+    seen_signatures = {_sample_row_signature(row) for row in merged}
+    for row in new_rows:
+        signature = _sample_row_signature(row)
+        if signature in seen_signatures:
+            continue
+        merged.append(row)
+        seen_signatures.add(signature)
+    return merged[:MAX_FINAL_VERIFICATION_ROWS_PER_FINDING]
+
+
+def _sample_row_signature(row: dict[str, Any]) -> tuple[tuple[str, str], ...]:
+    values = row.get("values") if isinstance(row, dict) else {}
+    if not isinstance(values, dict):
+        return ()
+    return tuple(sorted((str(key), str(value)) for key, value in values.items()))
 
 
 def _sample_finding_rows(finding: ValidationFinding, rows: list[dict[str, str]]) -> list[dict[str, Any]]:

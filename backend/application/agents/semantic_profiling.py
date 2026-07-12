@@ -35,16 +35,26 @@ class SemanticProfilingAgent(BaseAgent):
             and self.semantic_profiler is not None
             and self.semantic_profiler.enabled
         )
+        llm_reasons_by_name = {
+            column.raw_name: semantic_profile_llm_reasons(column)
+            for column in data.columns
+        }
+        llm_targets = [
+            column
+            for column in data.columns
+            if use_llm and llm_reasons_by_name.get(column.raw_name)
+        ]
+        llm_profiles = self.semantic_profiler.profile_many(state, llm_targets) if llm_targets else {}
 
         for column in data.columns:
-            llm_reasons = semantic_profile_llm_reasons(column)
+            llm_reasons = llm_reasons_by_name.get(column.raw_name, [])
             needs_llm = use_llm and bool(llm_reasons)
             llm_attempted = False
             column.semantic_profile_llm_needed = needs_llm
             column.semantic_profile_llm_reasons = llm_reasons
             if needs_llm:
                 llm_attempted = True
-                profile = self.semantic_profiler.profile(state, column)
+                profile = llm_profiles.get(column.raw_name)
                 if profile:
                     column.semantic_profile_label = profile.get("label")
                     column.semantic_profile_description = profile.get("description")

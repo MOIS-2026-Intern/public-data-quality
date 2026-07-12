@@ -15,7 +15,7 @@ from backend.application.dto import (
 )
 from backend.application.services.categorical_validation.address_detail import run_llm_address_detail_validation
 from backend.application.services.categorical_validation.column_validation import (
-    column_value_counter,
+    index_column_values,
     llm_skip_reason,
     validation_values,
 )
@@ -102,12 +102,14 @@ class CategoricalSemanticValidationAgent(BaseAgent):
         traces: list,
         use_llm: bool,
     ) -> None:
-        counter = column_value_counter(rows, column.raw_name)
+        indexed_values = index_column_values(rows, column.raw_name)
+        counter = indexed_values.counter
         local_counts = apply_local_categorical_findings(
             column=column,
             rows=rows,
             counter=counter,
             findings=findings,
+            value_row_indexes=indexed_values.row_indexes,
         )
 
         if not use_llm:
