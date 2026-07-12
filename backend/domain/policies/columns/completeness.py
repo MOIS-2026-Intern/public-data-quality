@@ -18,9 +18,15 @@ from .helpers import (
 from ..shared.findings import build_finding
 from ..shared.text_checks import contains_broken_text, has_special_char_issue, has_whitespace_issue
 
+SEJONG_SIDO_VALUES = {"세종특별자치시", "세종시"}
+
 
 def _normalize_name_for_identifier_check(value: str) -> str:
     return value.replace(" ", "").replace("_", "").replace("-", "").upper()
+
+
+def _normalize_column_name(value: str) -> str:
+    return value.replace(" ", "").replace("_", "").replace("-", "")
 
 
 def _looks_unique_identifier_column(context: ColumnRuleContext) -> bool:
@@ -34,6 +40,43 @@ def _looks_unique_identifier_column(context: ColumnRuleContext) -> bool:
         return False
     distinct_ratio = column.distinct_count / column.non_empty_count
     return distinct_ratio >= 0.8
+
+
+def _looks_sigungu_column(context: ColumnRuleContext) -> bool:
+    name = _normalize_column_name(f"{context.column.raw_name}{context.column.normalized_name}")
+    return "시군구" in name
+
+
+def _find_sido_column_name(context: ColumnRuleContext) -> str | None:
+    if not context.rows:
+        return None
+
+    current_name = context.column.raw_name
+    fallback_matches: list[str] = []
+    for name in context.rows[0].keys():
+        if name == current_name:
+            continue
+        normalized_name = _normalize_column_name(name)
+        if normalized_name == "시도명":
+            return name
+        if normalized_name in {"시도", "광역시도", "광역시도명"} or "시도" in normalized_name:
+            fallback_matches.append(name)
+    return fallback_matches[0] if fallback_matches else None
+
+
+def _optional_sigungu_row_indexes(context: ColumnRuleContext) -> set[int]:
+    if not _looks_sigungu_column(context):
+        return set()
+
+    sido_column_name = _find_sido_column_name(context)
+    if not sido_column_name:
+        return set()
+
+    optional_rows: set[int] = set()
+    for row_index, row in enumerate(context.rows, start=1):
+        if (row.get(sido_column_name) or "").strip() in SEJONG_SIDO_VALUES:
+            optional_rows.add(row_index)
+    return optional_rows
 
 
 def find_garbled_text(context: ColumnRuleContext) -> list[ValidationFinding]:
@@ -162,8 +205,34 @@ def find_required_nulls(context: ColumnRuleContext) -> list[ValidationFinding]:
     column = context.column
     if not (is_likely_required(column) and (column.null_count or 0) > 0):
         return []
-    if column.null_ratio is not None and column.null_ratio > REQUIRED_VALUE_NULL_MAX_RATIO:
+
+    optional_row_indexes = _optional_sigungu_row_indexes(context)
+    null_row_indexes = [
+        row_index
+        for row_index in matching_row_indexes(
+            context.rows,
+            column.raw_name,
+            lambda value: not value.strip(),
+        )
+        if row_index not in optional_row_indexes
+    ]
+    if not null_row_indexes:
         return []
+
+    applicable_row_count = len(context.rows) - len(optional_row_indexes) if context.rows else None
+    effective_null_ratio = (
+        round(len(null_row_indexes) / applicable_row_count, 4)
+        if applicable_row_count and applicable_row_count > 0
+        else column.null_ratio
+    )
+    if effective_null_ratio is not None and effective_null_ratio > REQUIRED_VALUE_NULL_MAX_RATIO:
+        return []
+
+    evidence = []
+    if effective_null_ratio is not None:
+        evidence.append(f"null_ratio:{effective_null_ratio}")
+    if optional_row_indexes:
+        evidence.append("conditional_optional:sejong_sigungu")
 
     return [
         build_finding(
@@ -172,14 +241,10 @@ def find_required_nulls(context: ColumnRuleContext) -> list[ValidationFinding]:
             category_group="completeness",
             criterion_name="required_value",
             message=(
-                f"필수성이 높은 컬럼으로 추정되나 결측값 {column.null_count}건이 존재합니다."
+                f"필수성이 높은 컬럼으로 추정되나 결측값 {len(null_row_indexes)}건이 존재합니다."
             ),
-            row_indexes=matching_row_indexes(
-                context.rows,
-                column.raw_name,
-                lambda value: not value.strip(),
-            ),
-            evidence=[f"null_ratio:{column.null_ratio}"],
+            row_indexes=null_row_indexes,
+            evidence=evidence,
         )
     ]
 

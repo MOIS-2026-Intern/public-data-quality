@@ -34,6 +34,63 @@ def test_date_domain_allows_day_of_month_distribution() -> None:
     assert [finding.rule_id for finding in findings] == []
 
 
+def test_required_value_allows_blank_sigungu_for_sejong() -> None:
+    rows = [
+        {"시도명": "세종특별자치시", "시군구명": ""},
+        {"시도명": "서울특별시", "시군구명": "강남구"},
+    ]
+    column = ColumnProfile(
+        raw_name="시군구명",
+        normalized_name="시군구명",
+        source="response",
+        semantic_tags=[],
+        assigned_rules=["required_value"],
+        inferred_primitive_type="text",
+        non_empty_count=1,
+        null_count=1,
+        null_ratio=0.5,
+        distinct_count=1,
+        sample_values=["강남구"],
+        top_values=[("강남구", 1)],
+    )
+
+    findings = validate_column(column, _dataset_meta(), rows)
+
+    assert [finding.rule_id for finding in findings] == []
+
+
+def test_required_value_keeps_non_sejong_blank_sigungu() -> None:
+    rows = [{"시도명": "세종특별자치시", "시군구명": ""}]
+    rows.extend(
+        {"시도명": "서울특별시", "시군구명": f"행정구역{i}"}
+        for i in range(1, 20)
+    )
+    rows.append({"시도명": "부산광역시", "시군구명": ""})
+
+    column = ColumnProfile(
+        raw_name="시군구명",
+        normalized_name="시군구명",
+        source="response",
+        semantic_tags=[],
+        assigned_rules=["required_value"],
+        inferred_primitive_type="text",
+        non_empty_count=19,
+        null_count=2,
+        null_ratio=round(2 / 21, 4),
+        distinct_count=19,
+        sample_values=["행정구역1", "행정구역2", "행정구역3"],
+        top_values=[("행정구역1", 1), ("행정구역2", 1), ("행정구역3", 1)],
+    )
+
+    findings = validate_column(column, _dataset_meta(), rows)
+
+    assert len(findings) == 1
+    assert findings[0].rule_id == "required_value"
+    assert findings[0].row_indexes == [21]
+    assert findings[0].message == "필수성이 높은 컬럼으로 추정되나 결측값 1건이 존재합니다."
+    assert "null_ratio:0.05" in findings[0].evidence
+
+
 def test_calculation_formula_relationships_are_disabled() -> None:
     columns = [
         ColumnProfile(

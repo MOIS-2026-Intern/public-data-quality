@@ -394,8 +394,8 @@ function SummarySection({ summary }) {
       <SummaryCard label="행 수" value={summary.row_count ?? "-"} />
       <SummaryCard label="컬럼 수" value={summary.column_count} />
       <SummaryCard label="검증 결과" value={summary.finding_count ?? 0} />
-      <SummaryCard label="오류/이상" value={summary.issue_finding_count ?? 0} />
-      <SummaryCard label="수동 검토" value={summary.manual_review_finding_count ?? 0} />
+      <SummaryCard label="오류/이상 탐지" value={summary.issue_finding_count ?? 0} />
+      <SummaryCard label="수동 검토 필요" value={summary.manual_review_finding_count ?? 0} />
     </div>
   );
 }

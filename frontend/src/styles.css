@@ -498,7 +498,7 @@ textarea {
 }
 
 .summary-card {
-  padding: 0 0 8px;
+  padding: 2px 0 8px;
 }
 
 .summary-label {
@@ -508,7 +508,7 @@ textarea {
 
 .summary-value {
   margin-top: 4px;
-  font-weight: 700;
+  font-weight: 400;
   font-size: 1.03rem;
   overflow-wrap: anywhere;
 }
@@ -535,9 +535,8 @@ textarea {
 
 .batch-dataset-panel {
   display: grid;
-  gap: 8px;
-  padding: 0 0 10px;
-  border-bottom: 1px solid #e6ece9;
+  gap: 10px;
+  padding: 2px 0 12px;
 }
 
 .batch-dataset-header {
@@ -546,7 +545,7 @@ textarea {
   justify-content: space-between;
   gap: 10px;
   color: #51625c;
-  font-size: 0.86rem;
+  font-size: 0.9rem;
 }
 
 .batch-dataset-header div {
@@ -557,27 +556,33 @@ textarea {
 }
 
 .batch-dataset-header strong {
-  color: #10221b;
-  font-size: 0.98rem;
+  color: inherit;
+  font-size: inherit;
+  font-weight: 400;
 }
 
 .batch-dataset-search {
   width: 100%;
   min-height: 36px;
-  border: 1px solid #d7dfdc;
-  border-radius: 8px;
+  border: none;
+  border-radius: 12px;
   padding: 8px 10px;
-  background: #ffffff;
+  background: #f5f8f6;
   color: #10221b;
+}
+
+.batch-dataset-search:focus {
+  outline: 2px solid rgba(17, 40, 77, 0.14);
+  outline-offset: 0;
 }
 
 .batch-dataset-list {
   display: grid;
-  gap: 0;
+  gap: 8px;
   max-height: 260px;
   overflow: hidden;
   overflow-y: auto;
-  border-top: 1px solid #eef2f0;
+  padding: 2px 0;
 }
 
 .batch-dataset-row {
@@ -587,21 +592,20 @@ textarea {
   gap: 14px;
   width: 100%;
   border: 0;
-  border-bottom: 1px solid #eef2f0;
-  border-radius: 0;
-  padding: 9px 2px;
-  background: transparent;
+  border-radius: 12px;
+  padding: 11px 12px;
+  background: #f8faf9;
   color: #10221b;
   cursor: pointer;
   text-align: left;
 }
 
 .batch-dataset-row:hover {
-  background: #f8faf9;
+  background: #f1f5f3;
 }
 
 .batch-dataset-row.is-active {
-  background: #f2f6f4;
+  background: #eaf1ee;
   color: #11284d;
 }
 
@@ -713,8 +717,10 @@ textarea {
 .finding-tabs {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0;
-  border-bottom: 1px solid #dfe6e2;
+  gap: 4px;
+  padding: 4px;
+  border-radius: 12px;
+  background: #f6f8f7;
 }
 
 .finding-tab {
@@ -726,8 +732,8 @@ textarea {
   min-width: 0;
   overflow: hidden;
   border: none;
-  border-radius: 0;
-  padding: 0 0 9px;
+  border-radius: 10px;
+  padding: 9px 10px;
   background: transparent;
   color: #66756f;
   cursor: pointer;
@@ -739,17 +745,12 @@ textarea {
 }
 
 .finding-tab.is-active {
+  background: #ffffff;
   color: #11284d;
 }
 
 .finding-tab.is-active::after {
-  content: "";
-  position: absolute;
-  right: 0;
-  bottom: -1px;
-  left: 0;
-  height: 2px;
-  background: #11284d;
+  content: none;
 }
 
 .finding-tab strong {
