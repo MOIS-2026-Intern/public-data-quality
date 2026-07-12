@@ -1,6 +1,0 @@
-langgraph
-pydantic
-flask
-python-dotenv
-openpyxl
-xlrd
