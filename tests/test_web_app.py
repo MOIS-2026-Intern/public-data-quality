@@ -16,6 +16,7 @@ def test_create_app_uses_repo_frontend_dist_directory() -> None:
 
 
 def test_analyze_route_returns_single_result_envelope(monkeypatch, tmp_path) -> None:
+    monkeypatch.setenv("VERCEL", "1")
     app = create_app()
     client = app.test_client()
     dataset = PreparedDataset(
@@ -54,6 +55,7 @@ def test_analyze_route_returns_single_result_envelope(monkeypatch, tmp_path) -> 
 
 
 def test_analyze_route_hides_unexpected_error_details(monkeypatch) -> None:
+    monkeypatch.setenv("VERCEL", "1")
     app = create_app()
     client = app.test_client()
 

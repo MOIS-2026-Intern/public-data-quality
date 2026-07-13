@@ -13,55 +13,14 @@ const SOURCE_TYPES = [
   { id: "url", label: "URL 입력" },
   { id: "api", label: "API 호출" },
 ];
+const JOB_POLL_INTERVAL_MS = 1500;
+const JOB_TERMINAL_STATUSES = new Set(["completed", "partial_failed", "failed"]);
 
 function splitLineValues(value) {
   return value
     .split(/\r?\n/)
     .map((item) => item.trim())
     .filter(Boolean);
-}
-
-function batchSummary(items) {
-  const successfulResults = items.filter((item) => item.ok && item.result).map((item) => item.result);
-  return {
-    dataset_count: items.length,
-    success_count: successfulResults.length,
-    failed_count: items.filter((item) => !item.ok).length,
-    row_count: successfulResults.reduce((sum, result) => sum + Number(result.summary?.row_count || 0), 0),
-    finding_count: successfulResults.reduce((sum, result) => sum + Number(result.summary?.finding_count || 0), 0),
-    issue_finding_count: successfulResults.reduce(
-      (sum, result) => sum + Number(result.summary?.issue_finding_count || 0),
-      0,
-    ),
-    manual_review_finding_count: successfulResults.reduce(
-      (sum, result) => sum + Number(result.summary?.manual_review_finding_count || 0),
-      0,
-    ),
-  };
-}
-
-function analysisPayload(items) {
-  if (items.length === 1) {
-    const [item] = items;
-    const singleResult = item?.ok ? item.result || null : null;
-    const payload = {
-      batch: false,
-      summary: singleResult?.summary || {},
-      results: items,
-      result: singleResult,
-    };
-    if (!singleResult) {
-      payload.error = item?.error || "분석 실패";
-    }
-    return payload;
-  }
-
-  return {
-    batch: true,
-    summary: batchSummary(items),
-    results: items,
-    result: null,
-  };
 }
 
 function isAnalyzePayload(value) {
@@ -71,34 +30,8 @@ function isAnalyzePayload(value) {
   return ["batch", "summary", "results", "result", "error"].some((key) => key in value);
 }
 
-function resolveAnalyzePayload(candidate) {
-  if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) {
-    return null;
-  }
-  if (candidate.type === "final") {
-    return isAnalyzePayload(candidate.payload) ? candidate.payload : null;
-  }
-  if (isAnalyzePayload(candidate.payload)) {
-    return candidate.payload;
-  }
-  return isAnalyzePayload(candidate) ? candidate : null;
-}
-
-function compactBatchItemsForReport(items) {
-  return items.map((item) => {
-    if (!item.ok || !item.result) {
-      return { ok: false, filename: item.filename || "", error: item.error || "" };
-    }
-    return {
-      ok: true,
-      filename: item.filename || item.result.summary?.dataset_name || "",
-      result: {
-        summary: item.result.summary || {},
-        columns: item.result.columns || [],
-        findings: item.result.findings || [],
-      },
-    };
-  });
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function ControlPanel({
@@ -515,6 +448,7 @@ function FindingsTable({ findings, previewRows }) {
 }
 
 function reportDownloadUrl(result) {
+  if (result?.summary?.error_report_download_path) return result.summary.error_report_download_path;
   const reportPath = result?.summary?.error_report_xlsx;
   if (!reportPath) return "";
   return `/api/reports/download?path=${encodeURIComponent(reportPath)}`;
@@ -769,91 +703,11 @@ function App() {
         stageIndex: Number(event.stage_index ?? currentProgress.stageIndex ?? 0),
         stageTotal: Number(event.stage_total ?? currentProgress.stageTotal ?? 0),
         stages: Array.isArray(event.stages) ? event.stages : currentProgress.stages || [],
+        jobId: event.job_id || event.jobId || currentProgress.jobId || "",
+        jobStatus: event.job_status || event.jobStatus || currentProgress.jobStatus || "",
         history,
       };
     });
-  }
-
-  function handleStreamEvent(event) {
-    if (event.type === "progress" || event.type === "file_done" || event.type === "file_error" || event.type === "final") {
-      updateProgress(event);
-    }
-  }
-
-  function consumeAnalyzeEvent(candidate, onStreamEvent) {
-    if (candidate?.type) {
-      onStreamEvent(candidate);
-    }
-    return resolveAnalyzePayload(candidate);
-  }
-
-  async function parseAnalyzeResponseText(responseText, onStreamEvent = handleStreamEvent) {
-    const trimmed = responseText.trim();
-    if (!trimmed) {
-      return null;
-    }
-
-    let finalPayload = null;
-    for (const line of trimmed.split(/\r?\n/)) {
-      if (!line.trim()) continue;
-      const payload = consumeAnalyzeEvent(JSON.parse(line), onStreamEvent);
-      if (payload) {
-        finalPayload = payload;
-      }
-    }
-    return finalPayload;
-  }
-
-  async function parseAnalyzeStream(response, onStreamEvent = handleStreamEvent) {
-    if (!response.body) {
-      return parseAnalyzeResponseText(await response.text(), onStreamEvent);
-    }
-
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = "";
-    let finalPayload = null;
-    let streamError = "";
-
-    while (true) {
-      const { value, done } = await reader.read();
-      if (done) break;
-
-      buffer += decoder.decode(value, { stream: true });
-      const lines = buffer.split("\n");
-      buffer = lines.pop() || "";
-
-      for (const line of lines) {
-        if (!line.trim()) continue;
-        const event = JSON.parse(line);
-        const payload = consumeAnalyzeEvent(event, onStreamEvent);
-        if (event.type === "file_error" && event.error) {
-          streamError = event.error;
-        }
-        if (payload) {
-          finalPayload = payload;
-        }
-      }
-    }
-
-    if (buffer.trim()) {
-      const event = JSON.parse(buffer);
-      const payload = consumeAnalyzeEvent(event, onStreamEvent);
-      if (event.type === "file_error" && event.error) {
-        streamError = event.error;
-      }
-      if (payload) {
-        finalPayload = payload;
-      }
-    }
-
-    if (finalPayload?.error && !finalPayload?.batch) {
-      throw new Error(finalPayload.error);
-    }
-    if (!finalPayload && streamError) {
-      throw new Error(streamError);
-    }
-    return finalPayload;
   }
 
   function appendCommonAnalyzeFields(body, useLlmForRequest) {
@@ -863,115 +717,104 @@ function App() {
     if (useLlmForRequest && llmStrongModel) body.append("llm_strong_model", llmStrongModel);
   }
 
-  function transformSequentialFileEvent(event, fileIndex, totalFiles, filename) {
-    const eventProgress = Math.max(0, Math.min(100, Number(event.progress) || 0));
-    const completedByEvent = ["file_done", "file_error", "final"].includes(event.type)
-      ? 1
-      : Math.min(1, Math.max(0, Number(event.current) || 0));
-    const progress = Math.min(100, Math.round(((fileIndex + eventProgress / 100) / totalFiles) * 100));
-    const current = Math.min(totalFiles, fileIndex + completedByEvent);
-    const message = event.message || "분석 중";
+  async function parseJsonResponse(response) {
+    const responseText = await response.text();
+    if (!responseText.trim()) return null;
+    try {
+      return JSON.parse(responseText);
+    } catch {
+      throw new Error(responseText || "분석 응답 형식이 올바르지 않습니다.");
+    }
+  }
+
+  function jobProgressEvent(job, fallbackMessage = "분석 중") {
+    const total = Number(job?.total_items || job?.items?.length || expectedSourceCount() || 1);
+    const processed = Number(job?.processed_items || 0);
+    const runningItem = (job?.items || []).find((item) => item.status === "running");
+    const latestItem = runningItem || (job?.items || []).find((item) => item.status === "queued") || (job?.items || [])[0];
+    const terminal = JOB_TERMINAL_STATUSES.has(job?.status);
+    const percent = terminal
+      ? 100
+      : total > 0 && processed > 0
+        ? Math.min(99, Math.round((processed / total) * 100))
+        : job?.status === "running"
+          ? 10
+          : 3;
+    const statusLabel =
+      job?.status === "queued"
+        ? "업로드 중"
+        : job?.status === "running"
+          ? "분석 중"
+          : job?.status === "completed"
+            ? "분석 완료"
+            : job?.status === "partial_failed"
+              ? "일부 분석 실패"
+              : job?.status === "failed"
+                ? "분석 실패"
+                : fallbackMessage;
 
     return {
-      ...event,
-      progress,
-      current,
-      total: totalFiles,
-      filename: event.filename || filename,
-      message: totalFiles > 1 ? `${fileIndex + 1}/${totalFiles} ${message}` : message,
+      type: "progress",
+      progress: percent,
+      current: processed,
+      total,
+      filename: latestItem?.display_name || latestItem?.dataset_name || "",
+      job_id: job?.job_id || "",
+      job_status: job?.status || "",
+      message: statusLabel,
     };
   }
 
-  async function fetchAnalyzePayload(body, onStreamEvent = handleStreamEvent) {
-    const response = await fetch("/api/analyze-stream", {
+  async function pollAnalyzeJob(initialJob) {
+    let job = initialJob;
+    updateProgress(jobProgressEvent(job, "작업 등록됨"));
+
+    while (true) {
+      await sleep(JOB_POLL_INTERVAL_MS);
+      const response = await fetch(`/api/jobs/${encodeURIComponent(job.job_id)}/result`);
+      const payload = await parseJsonResponse(response);
+
+      if (!response.ok && response.status !== 202) {
+        throw new Error(payload?.error || "분석 상태 조회에 실패했습니다.");
+      }
+      if (response.status === 202) {
+        job = payload?.job || job;
+        updateProgress(jobProgressEvent(job));
+        continue;
+      }
+      if (!payload || !isAnalyzePayload(payload)) {
+        throw new Error("분석 응답 형식이 올바르지 않습니다.");
+      }
+      updateProgress(jobProgressEvent({ ...job, status: "completed", processed_items: job.total_items || 1 }));
+      if (payload.error && !payload.batch) {
+        throw new Error(payload.error);
+      }
+      return payload;
+    }
+  }
+
+  async function fetchAnalyzePayload(body) {
+    const response = await fetch("/api/analyze", {
       method: "POST",
       body,
     });
+    const payload = await parseJsonResponse(response);
 
-    if (!response.ok) {
-      const responseText = await response.text();
-      let payload = null;
-      try {
-        payload = responseText ? JSON.parse(responseText) : null;
-      } catch {
-        payload = null;
-      }
-      throw new Error(payload?.error || responseText || "분석 요청에 실패했습니다.");
+    if (!response.ok && response.status !== 202) {
+      throw new Error(payload?.error || "분석 요청에 실패했습니다.");
     }
-
-    const payload = await parseAnalyzeStream(response, onStreamEvent);
-    if (!payload) {
+    if (response.status === 202 || payload?.job) {
+      if (!payload?.job?.job_id) {
+        throw new Error("분석 작업 ID를 받지 못했습니다.");
+      }
+      return pollAnalyzeJob(payload.job);
+    }
+    if (!payload || !isAnalyzePayload(payload)) {
       throw new Error("분석 응답 형식이 올바르지 않습니다.");
     }
-    return payload;
-  }
-
-  async function analyzeDatasetFilesSequentially(useLlmForRequest) {
-    const totalFiles = datasetFiles.length;
-    const items = [];
-
-    for (let fileIndex = 0; fileIndex < totalFiles; fileIndex += 1) {
-      const datasetFile = datasetFiles[fileIndex];
-      const body = new FormData();
-      body.append("source_type", "file");
-      body.append("dataset_file", datasetFile);
-      appendCommonAnalyzeFields(body, useLlmForRequest);
-
-      updateProgress({
-        type: "progress",
-        progress: Math.round((fileIndex / totalFiles) * 100),
-        current: fileIndex,
-        total: totalFiles,
-        filename: datasetFile.name,
-        message: totalFiles > 1 ? `${fileIndex + 1}/${totalFiles} 업로드 중` : "업로드 중",
-      });
-
-      try {
-        const payload = await fetchAnalyzePayload(body, (streamEvent) =>
-          handleStreamEvent(transformSequentialFileEvent(streamEvent, fileIndex, totalFiles, datasetFile.name)),
-        );
-        if (Array.isArray(payload.results) && payload.results.length) {
-          items.push(...payload.results);
-        } else if (payload.result) {
-          items.push({ ok: true, filename: datasetFile.name, result: payload.result });
-        }
-      } catch (err) {
-        const errorMessage = err.message || "분석 실패";
-        items.push({ ok: false, filename: datasetFile.name, error: errorMessage });
-        handleStreamEvent({
-          type: "file_error",
-          progress: Math.round(((fileIndex + 1) / totalFiles) * 100),
-          current: fileIndex + 1,
-          total: totalFiles,
-          filename: datasetFile.name,
-          message: totalFiles > 1 ? `${fileIndex + 1}/${totalFiles} 실패` : "실패",
-          error: errorMessage,
-        });
-      }
+    if (payload.error && !payload.batch) {
+      throw new Error(payload.error);
     }
-
-    const payload = analysisPayload(items);
-    if (items.length > 1 && items.some((item) => item.ok && item.result)) {
-      try {
-        const reportResponse = await fetch("/api/reports/batch", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ results: compactBatchItemsForReport(items) }),
-        });
-        if (reportResponse.ok) {
-          const reportPayload = await reportResponse.json();
-          if (reportPayload?.error_report_xlsx) {
-            payload.summary = {
-              ...payload.summary,
-              error_report_xlsx: reportPayload.error_report_xlsx,
-            };
-          }
-        }
-      } catch {
-        // 개별 분석 결과 표시는 유지하고, 통합 리포트 버튼만 생략한다.
-      }
-    }
-
     return payload;
   }
 
@@ -1010,14 +853,11 @@ function App() {
         throw new Error("OpenAI API Key를 입력하세요.");
       }
 
-      if (sourceType === "file") {
-        const payload = await analyzeDatasetFilesSequentially(useLlmForRequest);
-        setResult(payload);
-        return;
-      }
-
       const body = new FormData();
       body.append("source_type", sourceType);
+      if (sourceType === "file") {
+        datasetFiles.forEach((datasetFile) => body.append("dataset_file", datasetFile));
+      }
       if (sourceType === "url") {
         dataUrls.forEach((url) => body.append("data_url", url));
         urlListFiles.forEach((urlListFile) => body.append("url_list_file", urlListFile));

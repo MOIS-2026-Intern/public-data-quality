@@ -1,4 +1,5 @@
 from .categorical import *  # noqa: F403
+from .celery import *  # noqa: F403
 from .column_rules import *  # noqa: F403
 from .common import *  # noqa: F403
 from .io import *  # noqa: F403

@@ -1,3 +1,10 @@
+from .analysis_job import (
+    AnalysisJob,
+    AnalysisJobItem,
+    ArtifactDownload,
+    ArtifactRef,
+    job_timestamp,
+)
 from .pipeline import (
     AgentTrace,
     PipelineData,
@@ -19,7 +26,11 @@ from .pipeline import (
 from .prepared_dataset import PreparedDataset
 
 __all__ = [
+    "AnalysisJob",
+    "AnalysisJobItem",
     "AgentTrace",
+    "ArtifactDownload",
+    "ArtifactRef",
     "PipelineData",
     "PipelineExecutionRequest",
     "PipelineRequest",
@@ -32,6 +43,7 @@ __all__ = [
     "pipeline_rows",
     "pipeline_state_update",
     "PreparedDataset",
+    "job_timestamp",
     "require_dataset_meta",
     "update_pipeline_data",
     "update_pipeline_request",

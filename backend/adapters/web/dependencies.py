@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from backend.application.dto import PreparedDataset
+from backend.application.ports import AnalysisJobRepositoryPort, AnalysisQueuePort, ArtifactStorePort
 from backend.application.use_cases import PipelineAnalysisUseCase
 
 
@@ -20,6 +21,10 @@ class WebAdapterDependencies:
     prepare_url_datasets: Callable[..., list[PreparedDataset]]
     prepare_api_datasets: Callable[..., list[PreparedDataset]]
     load_url_list: Callable[..., list[str]]
+    analysis_job_repository: Callable[[], AnalysisJobRepositoryPort] | None = None
+    artifact_store: Callable[[], ArtifactStorePort] | None = None
+    analysis_queue: Callable[[], AnalysisQueuePort] | None = None
+    analysis_queue_backend: str = "celery"
 
 
 @lru_cache(maxsize=1)
