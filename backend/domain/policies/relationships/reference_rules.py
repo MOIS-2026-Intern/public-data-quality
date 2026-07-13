@@ -5,7 +5,7 @@ from typing import Any
 from backend.domain.entities.models import ColumnProfile, ValidationFinding
 from ..shared.findings import build_finding
 from ..shared.settings import REFERENCE_PAIR_TOKENS
-from .common import candidate_pairs, find_matching_columns
+from .common import candidate_pairs, find_matching_columns, is_non_unique_local_admin_reference_pair
 
 
 def _looks_like_reference_key(column: ColumnProfile) -> bool:
@@ -48,6 +48,8 @@ def validate_reference_relationships(
             for pair in find_matching_columns(columns, code_token, name_token)
         ]
     for code_col, name_col in pairs:
+        if is_non_unique_local_admin_reference_pair(code_col, name_col):
+            continue
         if not _looks_like_reference_key(code_col):
             continue
 

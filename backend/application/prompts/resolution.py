@@ -149,6 +149,7 @@ Instructions:
 - For logical_consistency, use two columns with a clear business dependency, such as a yes/no flag and its count, or a region column and an address column.
 - For calculation_formula, use one result/total column and two or more numeric component columns.
 - For reference_relation, use exactly two columns where one is a code/id/number and the other is its name/label.
+- Do not propose reference_relation for plain local administrative level columns such as 시군구, 읍면동, 법정동, or 행정동 matched to their name columns unless the code side clearly indicates a nationwide official code.
 - Return an empty list if no relationship is clear.
 - Use only raw column names that appear in Columns.
 - Output JSON only.

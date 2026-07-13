@@ -14,6 +14,7 @@ from backend.application.prompts.resolution import (
 from backend.config.llm import LLM_STRONG_FALLBACK_CONFIDENCE
 from backend.config.validation import TAG_RULE_MAP, VALIDATION_CRITERIA
 from backend.domain.entities.models import ColumnProfile
+from backend.domain.policies.relationships.common import is_non_unique_local_admin_reference_pair
 from .confidence import coerce_resolution_confidence
 
 
@@ -254,7 +255,8 @@ class LLMColumnResolver:
         if payload is None:
             return []
 
-        raw_names = {column.raw_name for column in columns}
+        by_name = {column.raw_name: column for column in columns}
+        raw_names = set(by_name)
         candidates = payload.get("relationship_candidates")
         if not isinstance(candidates, list):
             return []
@@ -271,12 +273,19 @@ class LLMColumnResolver:
                 for name in candidate.get("columns", [])
                 if str(name).strip() in raw_names
             ]
+            candidate_columns = list(dict.fromkeys(candidate_columns))
             if len(candidate_columns) < 2:
+                continue
+            resolved_columns = [by_name[name] for name in candidate_columns]
+            if rule_id == "reference_relation" and is_non_unique_local_admin_reference_pair(
+                resolved_columns[0],
+                resolved_columns[1],
+            ):
                 continue
             sanitized.append(
                 {
                     "rule_id": rule_id,
-                    "columns": list(dict.fromkeys(candidate_columns)),
+                    "columns": candidate_columns,
                     "confidence": coerce_resolution_confidence(candidate.get("confidence")),
                     "reason": str(candidate.get("reason") or "").strip(),
                 }

@@ -142,3 +142,135 @@ def test_calculation_formula_relationships_are_disabled() -> None:
     findings = validate_dataset_relationships(columns, rows, candidates)
 
     assert [finding.rule_id for finding in findings] == []
+
+
+def test_reference_relationship_skips_plain_sigungu_to_sigungu_name_mapping() -> None:
+    columns = [
+        ColumnProfile(
+            raw_name="시군구",
+            normalized_name="시군구",
+            source="response",
+            semantic_tags=["code"],
+            assigned_rules=["reference_relation"],
+            inferred_primitive_type="text",
+            non_empty_count=2,
+            distinct_count=1,
+            sample_values=["380"],
+            top_values=[("380", 2)],
+        ),
+        ColumnProfile(
+            raw_name="시군구명",
+            normalized_name="시군구명",
+            source="response",
+            semantic_tags=["name"],
+            assigned_rules=["reference_relation"],
+            inferred_primitive_type="text",
+            non_empty_count=2,
+            distinct_count=2,
+            sample_values=["사하구", "은평구"],
+            top_values=[("사하구", 1), ("은평구", 1)],
+        ),
+    ]
+    rows = [
+        {"시군구": "380", "시군구명": "사하구"},
+        {"시군구": "380", "시군구명": "은평구"},
+    ]
+    candidates = [
+        {
+            "rule_id": "reference_relation",
+            "columns": ["시군구", "시군구명"],
+            "confidence": 0.99,
+        }
+    ]
+
+    findings = validate_dataset_relationships(columns, rows, candidates)
+
+    assert [finding.rule_id for finding in findings] == []
+
+
+def test_reference_relationship_skips_plain_eupmyeondong_to_name_mapping() -> None:
+    columns = [
+        ColumnProfile(
+            raw_name="읍면동",
+            normalized_name="읍면동",
+            source="response",
+            semantic_tags=["code"],
+            assigned_rules=["reference_relation"],
+            inferred_primitive_type="text",
+            non_empty_count=2,
+            distinct_count=1,
+            sample_values=["602"],
+            top_values=[("602", 2)],
+        ),
+        ColumnProfile(
+            raw_name="읍면동명",
+            normalized_name="읍면동명",
+            source="response",
+            semantic_tags=["name"],
+            assigned_rules=["reference_relation"],
+            inferred_primitive_type="text",
+            non_empty_count=2,
+            distinct_count=2,
+            sample_values=["상계동", "중계동"],
+            top_values=[("상계동", 1), ("중계동", 1)],
+        ),
+    ]
+    rows = [
+        {"읍면동": "602", "읍면동명": "상계동"},
+        {"읍면동": "602", "읍면동명": "중계동"},
+    ]
+    candidates = [
+        {
+            "rule_id": "reference_relation",
+            "columns": ["읍면동", "읍면동명"],
+            "confidence": 0.99,
+        }
+    ]
+
+    findings = validate_dataset_relationships(columns, rows, candidates)
+
+    assert [finding.rule_id for finding in findings] == []
+
+
+def test_reference_relationship_skips_plain_beopjeongdong_to_name_mapping() -> None:
+    columns = [
+        ColumnProfile(
+            raw_name="법정동",
+            normalized_name="법정동",
+            source="response",
+            semantic_tags=["code"],
+            assigned_rules=["reference_relation"],
+            inferred_primitive_type="text",
+            non_empty_count=2,
+            distinct_count=1,
+            sample_values=["110"],
+            top_values=[("110", 2)],
+        ),
+        ColumnProfile(
+            raw_name="법정동명",
+            normalized_name="법정동명",
+            source="response",
+            semantic_tags=["name"],
+            assigned_rules=["reference_relation"],
+            inferred_primitive_type="text",
+            non_empty_count=2,
+            distinct_count=2,
+            sample_values=["청운동", "효자동"],
+            top_values=[("청운동", 1), ("효자동", 1)],
+        ),
+    ]
+    rows = [
+        {"법정동": "110", "법정동명": "청운동"},
+        {"법정동": "110", "법정동명": "효자동"},
+    ]
+    candidates = [
+        {
+            "rule_id": "reference_relation",
+            "columns": ["법정동", "법정동명"],
+            "confidence": 0.99,
+        }
+    ]
+
+    findings = validate_dataset_relationships(columns, rows, candidates)
+
+    assert [finding.rule_id for finding in findings] == []

@@ -6,6 +6,10 @@ from backend.domain.entities.models import ColumnProfile
 from ..shared.settings import NUMERIC_PAIR_BASE_STEM_TOKENS
 
 
+def _compact_name(name: str) -> str:
+    return "".join(name.split())
+
+
 def base_stem(name: str) -> str:
     stem = name
     for token in NUMERIC_PAIR_BASE_STEM_TOKENS:
@@ -44,6 +48,34 @@ def find_matching_columns(
 
 def columns_by_name(columns: list[ColumnProfile]) -> dict[str, ColumnProfile]:
     return {column.raw_name: column for column in columns}
+
+
+def _matches_column_name(column: ColumnProfile, expected_names: set[str]) -> bool:
+    return bool(
+        {
+            _compact_name(column.raw_name),
+            _compact_name(column.normalized_name),
+        }.intersection(expected_names)
+    )
+
+
+def is_non_unique_local_admin_reference_pair(left: ColumnProfile, right: ColumnProfile) -> bool:
+    local_admin_pairs = (
+        ({"시군구"}, {"시군구명", "시군구이름"}),
+        ({"읍면동"}, {"읍면동명", "읍면동이름"}),
+        ({"법정동"}, {"법정동명", "법정동이름"}),
+        ({"행정동"}, {"행정동명", "행정동이름"}),
+    )
+    return any(
+        (
+            _matches_column_name(left, code_names)
+            and _matches_column_name(right, label_names)
+        ) or (
+            _matches_column_name(right, code_names)
+            and _matches_column_name(left, label_names)
+        )
+        for code_names, label_names in local_admin_pairs
+    )
 
 
 def candidate_groups(
