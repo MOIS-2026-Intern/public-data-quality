@@ -4,7 +4,7 @@ from backend.domain.entities.models import ValidationFinding
 from .context import ColumnRuleContext
 from .helpers import matching_row_indexes
 from ..shared.findings import build_finding
-from ..shared.parsing import parse_number
+from ..shared.parsing import looks_plausible_amount_text, parse_amount_number, parse_number
 
 
 def _numeric_parse_or_negative_findings(
@@ -56,12 +56,55 @@ def find_amount_domain_issues(context: ColumnRuleContext) -> list[ValidationFind
     if "amount" not in context.column.semantic_tags:
         return []
 
-    return _numeric_parse_or_negative_findings(
-        context,
-        criterion_name="amount_domain",
-        parse_error_message="금액 도메인 컬럼에 숫자 파싱이 되지 않는 값이 존재합니다.",
-        negative_value_message="금액 도메인 컬럼에 음수 값이 포함되어 있습니다.",
+    column = context.column
+    invalid_row_indexes = matching_row_indexes(
+        context.rows,
+        column.raw_name,
+        lambda value: bool(value) and not looks_plausible_amount_text(value),
     )
+    if invalid_row_indexes:
+        evidence = []
+        if column.numeric_parse_ratio is not None:
+            evidence.append(f"numeric_parse_ratio:{column.numeric_parse_ratio:.2f}")
+        evidence.append("amount_text_filter:semantic")
+        return [
+            build_finding(
+                column_name=column.raw_name,
+                severity="warning",
+                category_group="domain_validity",
+                criterion_name="amount_domain",
+                message="금액 도메인 컬럼에 숫자 파싱이 되지 않는 값이 존재합니다.",
+                row_indexes=invalid_row_indexes,
+                evidence=evidence,
+            )
+        ]
+
+    negative_row_indexes = matching_row_indexes(
+        context.rows,
+        column.raw_name,
+        lambda value: (parsed := parse_amount_number(value)) is not None and parsed < 0,
+    )
+    if not negative_row_indexes:
+        return []
+
+    parsed_negative_values = [
+        parse_amount_number(row.get(column.raw_name, "") or "")
+        for row in context.rows
+        if row.get(column.raw_name)
+    ]
+    negative_values = [value for value in parsed_negative_values if value is not None and value < 0]
+    min_value = min(negative_values) if negative_values else column.numeric_min
+    return [
+        build_finding(
+            column_name=column.raw_name,
+            severity="warning",
+            category_group="domain_validity",
+            criterion_name="amount_domain",
+            message="금액 도메인 컬럼에 음수 값이 포함되어 있습니다.",
+            row_indexes=negative_row_indexes,
+            evidence=[f"min:{min_value}"] if min_value is not None else [],
+        )
+    ]
 
 
 def find_quantity_domain_issues(context: ColumnRuleContext) -> list[ValidationFinding]:

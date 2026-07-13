@@ -16,7 +16,12 @@ from .helpers import (
     truncated_address_row_indexes,
 )
 from ..shared.findings import build_finding
-from ..shared.text_checks import contains_broken_text, has_special_char_issue, has_whitespace_issue
+from ..shared.text_checks import (
+    contains_broken_text,
+    has_special_char_issue,
+    has_strong_whitespace_issue,
+    has_whitespace_issue,
+)
 
 SEJONG_SIDO_VALUES = {"세종특별자치시", "세종시"}
 
@@ -106,23 +111,57 @@ def find_whitespace_issues(context: ColumnRuleContext) -> list[ValidationFinding
     if not (has_whitespace_issue(column.raw_name) or has_value_issue):
         return []
 
-    return [
-        build_finding(
-            column_name=column.raw_name,
-            severity="warning",
-            category_group="completeness",
-            criterion_name="whitespace_special_characters",
-            rule_id="whitespace_issue",
-            message="컬럼명 또는 값에 앞뒤 공백이나 연속 공백이 포함된 것으로 보입니다.",
-            row_indexes=matching_row_indexes(
-                context.rows,
-                column.raw_name,
-                has_whitespace_issue,
-                strip_value=False,
-            ),
-            evidence=[value for value in context.sample_values if has_whitespace_issue(value)][:3],
+    strong_row_indexes = matching_row_indexes(
+        context.rows,
+        column.raw_name,
+        has_strong_whitespace_issue,
+        strip_value=False,
+    )
+    review_row_indexes = [
+        row_index
+        for row_index in matching_row_indexes(
+            context.rows,
+            column.raw_name,
+            has_whitespace_issue,
+            strip_value=False,
         )
+        if row_index not in set(strong_row_indexes)
     ]
+
+    findings: list[ValidationFinding] = []
+    if strong_row_indexes:
+        findings.append(
+            build_finding(
+                column_name=column.raw_name,
+                severity="warning",
+                category_group="completeness",
+                criterion_name="whitespace_special_characters",
+                rule_id="whitespace_issue",
+                message="컬럼명 또는 값에 과도한 연속 공백이나 구분자 주변 공백 불일치가 포함된 것으로 보입니다.",
+                row_indexes=strong_row_indexes,
+                evidence=[value for value in context.sample_values if has_strong_whitespace_issue(value)][:3],
+            )
+        )
+
+    if has_whitespace_issue(column.raw_name) or review_row_indexes:
+        findings.append(
+            build_finding(
+                column_name=column.raw_name,
+                severity="info",
+                category_group="completeness",
+                criterion_name="whitespace_special_characters",
+                rule_id="whitespace_manual_review",
+                message="컬럼명 또는 값에 경미한 공백 이상이 의심되어 수동 검토가 필요합니다.",
+                row_indexes=review_row_indexes,
+                evidence=[
+                    value
+                    for value in context.sample_values
+                    if has_whitespace_issue(value) and not has_strong_whitespace_issue(value)
+                ][:3],
+            )
+        )
+
+    return findings
 
 
 def find_special_character_issues(context: ColumnRuleContext) -> list[ValidationFinding]:

@@ -1,0 +1,66 @@
+from pathlib import Path
+import sys
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from backend.domain.entities.models import ColumnProfile, DatasetMeta
+from backend.domain.policies.columns.rules import validate_column
+
+
+def _dataset_meta() -> DatasetMeta:
+    return DatasetMeta(dataset_id="dataset", dataset_name="dataset")
+
+
+def _text_column(*, values: list[str]) -> ColumnProfile:
+    non_empty_values = [value for value in values if value]
+    distinct_values = list(dict.fromkeys(non_empty_values))
+    return ColumnProfile(
+        raw_name="가격정보",
+        normalized_name="가격정보",
+        source="response",
+        semantic_tags=["name"],
+        assigned_rules=["required_value"],
+        inferred_primitive_type="text",
+        non_empty_count=len(non_empty_values),
+        null_count=len(values) - len(non_empty_values),
+        null_ratio=round((len(values) - len(non_empty_values)) / len(values), 4) if values else None,
+        distinct_count=len(distinct_values),
+        sample_values=distinct_values[:5],
+        top_values=[(value, 1) for value in distinct_values[:5]],
+    )
+
+
+def test_whitespace_rule_sends_minor_cases_to_manual_review() -> None:
+    values = [
+        " 15000",
+        "가격  정보",
+        "15000 ~ 20000",
+    ]
+    rows = [{"가격정보": value} for value in values]
+
+    findings = validate_column(_text_column(values=values), _dataset_meta(), rows)
+
+    assert len(findings) == 1
+    assert findings[0].rule_id == "whitespace_manual_review"
+    assert findings[0].finding_type == "manual_review"
+    assert findings[0].severity == "info"
+    assert findings[0].row_indexes == [1, 2]
+
+
+def test_whitespace_rule_keeps_only_strong_cases_as_issue() -> None:
+    values = [
+        " 15000",
+        "15000 ~  20000",
+        "가격   정보",
+    ]
+    rows = [{"가격정보": value} for value in values]
+
+    findings = validate_column(_text_column(values=values), _dataset_meta(), rows)
+
+    assert len(findings) == 2
+    assert findings[0].rule_id == "whitespace_issue"
+    assert findings[0].finding_type == "issue"
+    assert findings[0].row_indexes == [2, 3]
+    assert findings[1].rule_id == "whitespace_manual_review"
+    assert findings[1].finding_type == "manual_review"
+    assert findings[1].row_indexes == [1]

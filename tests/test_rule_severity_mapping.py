@@ -35,6 +35,21 @@ def test_manual_review_rule_ids_are_info() -> None:
     assert finding.finding_type == "manual_review"
 
 
+def test_whitespace_manual_review_rule_is_info() -> None:
+    finding = build_finding(
+        column_name="가격정보",
+        severity="warning",
+        category_group="completeness",
+        criterion_name="whitespace_special_characters",
+        rule_id="whitespace_manual_review",
+        message="컬럼명 또는 값에 경미한 공백 이상이 의심되어 수동 검토가 필요합니다.",
+        row_indexes=[1],
+    )
+
+    assert finding.severity == "info"
+    assert finding.finding_type == "manual_review"
+
+
 def test_unknown_rule_uses_valid_fallback_severity() -> None:
     assert severity_for_rule("custom_rule", fallback="error") == "error"
     assert severity_for_rule("custom_rule", fallback="invalid") == "warning"
