@@ -40,11 +40,15 @@ def test_whitespace_rule_sends_minor_cases_to_manual_review() -> None:
 
     findings = validate_column(_text_column(values=values), _dataset_meta(), rows)
 
-    assert len(findings) == 1
+    assert len(findings) == 2
     assert findings[0].rule_id == "whitespace_manual_review"
     assert findings[0].finding_type == "manual_review"
     assert findings[0].severity == "info"
-    assert findings[0].row_indexes == [1, 2]
+    assert findings[0].row_indexes == [1]
+    assert findings[0].message == "문자열 맨 앞에 공백이 의심됩니다."
+    assert findings[1].rule_id == "whitespace_manual_review"
+    assert findings[1].row_indexes == [2]
+    assert findings[1].message == "'가격'과 '정보' 사이에 공백 이상이 의심됩니다."
 
 
 def test_whitespace_rule_keeps_only_strong_cases_as_issue() -> None:
@@ -64,3 +68,15 @@ def test_whitespace_rule_keeps_only_strong_cases_as_issue() -> None:
     assert findings[1].rule_id == "whitespace_manual_review"
     assert findings[1].finding_type == "manual_review"
     assert findings[1].row_indexes == [1]
+    assert findings[1].message == "문자열 맨 앞에 공백이 의심됩니다."
+
+
+def test_whitespace_rule_describes_column_name_issue() -> None:
+    column = _text_column(values=["정상값"])
+    column = column.model_copy(update={"raw_name": " 가격정보"})
+
+    findings = validate_column(column, _dataset_meta(), [{" 가격정보": "정상값"}])
+
+    assert len(findings) == 1
+    assert findings[0].rule_id == "whitespace_manual_review"
+    assert findings[0].message == "컬럼명에서 문자열 맨 앞에 공백이 의심됩니다."

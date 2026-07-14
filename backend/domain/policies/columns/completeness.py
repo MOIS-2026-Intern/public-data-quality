@@ -20,6 +20,7 @@ from .helpers import (
 from ..shared.findings import build_finding
 from ..shared.text_checks import (
     contains_broken_text,
+    describe_minor_whitespace_issue,
     has_special_char_issue,
     has_strong_whitespace_issue,
     has_whitespace_issue,
@@ -85,7 +86,7 @@ def find_whitespace_issues(context: ColumnRuleContext) -> list[ValidationFinding
             )
         )
 
-    if has_whitespace_issue(column.raw_name) or review_row_indexes:
+    if has_whitespace_issue(column.raw_name) and not has_strong_whitespace_issue(column.raw_name):
         findings.append(
             build_finding(
                 column_name=column.raw_name,
@@ -93,17 +94,43 @@ def find_whitespace_issues(context: ColumnRuleContext) -> list[ValidationFinding
                 category_group="completeness",
                 criterion_name="whitespace_special_characters",
                 rule_id="whitespace_manual_review",
-                message="컬럼명 또는 값에 경미한 공백 이상이 의심되어 수동 검토가 필요합니다.",
-                row_indexes=review_row_indexes,
-                evidence=[
-                    value
-                    for value in context.sample_values
-                    if has_whitespace_issue(value) and not has_strong_whitespace_issue(value)
-                ][:3],
+                message=_minor_whitespace_column_name_message(column.raw_name),
+                evidence=[column.raw_name],
+            )
+        )
+
+    for row_index in review_row_indexes:
+        if not (0 < row_index <= len(context.rows)):
+            continue
+        value = context.rows[row_index - 1].get(column.raw_name) or ""
+        findings.append(
+            build_finding(
+                column_name=column.raw_name,
+                severity="info",
+                category_group="completeness",
+                criterion_name="whitespace_special_characters",
+                rule_id="whitespace_manual_review",
+                message=_minor_whitespace_value_message(value),
+                row_indexes=[row_index],
+                evidence=[value],
             )
         )
 
     return findings
+
+
+def _minor_whitespace_column_name_message(column_name: str) -> str:
+    details = describe_minor_whitespace_issue(column_name)
+    if details:
+        return " ".join(f"컬럼명에서 {detail}" for detail in details)
+    return "컬럼명에 경미한 공백 이상이 의심되어 수동 검토가 필요합니다."
+
+
+def _minor_whitespace_value_message(value: str) -> str:
+    details = describe_minor_whitespace_issue(value)
+    if details:
+        return " ".join(details)
+    return "값에 경미한 공백 이상이 의심되어 수동 검토가 필요합니다."
 
 
 def find_special_character_issues(context: ColumnRuleContext) -> list[ValidationFinding]:
