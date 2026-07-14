@@ -1,14 +1,120 @@
 from __future__ import annotations
 
-from backend.domain.policies.shared.settings import (
-    BOOLEAN_ALLOWED_VALUES,
-    DATE_PATTERNS,
-    FREE_TEXT_COLUMN_NAME_TOKENS,
-    MANUAL_REVIEW_RULE_IDS,
-    RULE_SEVERITY_BY_RULE_ID,
-    SEVERITY_VALUES,
-    VALIDATION_CRITERIA,
+BOOLEAN_ALLOWED_VALUES = {"y", "n", "yes", "no", "true", "false", "0", "1", "예", "아니오", "유", "무"}
+DATE_PATTERNS = (
+    "%Y-%m-%d",
+    "%Y%m%d",
+    "%Y.%m.%d",
+    "%Y/%m/%d",
+    "%Y-%m",
+    "%Y%m",
+    "%Y",
+    "%Y년",
+    "%Y-%m-%d %H:%M:%S",
+    "%Y%m%d%H%M%S",
 )
+MANUAL_REVIEW_RULE_IDS = {
+    "manual_review_required",
+    "categorical_value_manual_review",
+    "categorical_value_normalization",
+    "whitespace_manual_review",
+    "date_format_inconsistent",
+    "row_context_manual_review",
+}
+RULE_SEVERITY_BY_RULE_ID = {
+    "manual_review_required": "info",
+    "categorical_value_manual_review": "info",
+    "categorical_value_normalization": "info",
+    "whitespace_manual_review": "info",
+    "date_format_inconsistent": "info",
+    "row_context_manual_review": "info",
+    "garbled_text": "error",
+    "whitespace_issue": "warning",
+    "special_character_issue": "warning",
+    "required_value": "warning",
+    "duplicate_data": "warning",
+    "date_domain": "warning",
+    "number_domain": "warning",
+    "boolean_domain": "warning",
+    "amount_domain": "warning",
+    "quantity_domain": "warning",
+    "rate_domain": "warning",
+    "categorical_semantic_domain": "warning",
+    "categorical_value_out_of_domain": "warning",
+    "categorical_value_truncated": "warning",
+    "logical_consistency": "warning",
+    "calculation_formula": "warning",
+    "reference_relation": "warning",
+    "address_region_prefix_mismatch": "warning",
+    "time_sequence_consistency": "error",
+    "precedence_accuracy": "warning",
+}
+SEVERITY_VALUES = {"info", "warning", "error"}
+
+FREE_TEXT_COLUMN_NAME_TOKENS = {
+    "기타",
+    "기타사항",
+    "기타내용",
+    "기타설명",
+    "비고",
+    "비고사항",
+    "메모",
+    "참고",
+    "참고사항",
+    "내용",
+    "설명",
+    "상세내용",
+    "사유",
+    "특이사항",
+    "안내",
+    "조치",
+    "민원",
+    "서비스URL",
+    "서비스url",
+    "서비스링크",
+    "사이트",
+    "홈페이지",
+    "URL",
+    "url",
+    "링크",
+    "대표문의",
+    "문의처",
+}
+
+VALIDATION_CRITERIA = {
+    "relation_consistency": {
+        "label": "데이터 관계 정합성",
+        "criteria": {
+            "time_sequence_consistency": "시간순서 관계를 갖는 컬럼 간의 데이터 오류 측정",
+            "precedence_accuracy": "선후관계를 가지는 컬럼 간의 데이터 오류 측정",
+            "logical_consistency": "컬럼 간 관계에 따른 특정 컬럼의 논리적 일관성 오류를 측정",
+            "calculation_formula": "원천데이터의 계산 등을 통해 저장되는 계산 값이 정확하게 관리되고 있는지를 측정",
+            "reference_relation": "참조하는 컬럼과 참조되는 컬럼 사이의 일관성이 유지되는지 측정",
+        },
+    },
+    "completeness": {
+        "label": "컬럼 완결성 검증",
+        "criteria": {
+            "garbled_text": "컬럼명, 데이터 값에 깨진 글자 또는 완성된 한글이 아닌 데이터 오류 측정",
+            "whitespace_special_characters": "컬럼명, 데이터 값에 불필요한 공백과 특수문자가 입력된 오류 측정",
+            "required_value": "데이터의 특성 상 반드시 입력되어야 하는 값은 누락없이 제공되어야 함",
+            "duplicate_data": "DB 내 두 개 이상 테이블(또는 파일)에 존재하는 동일한(중복) 데이터의 값 일치 여부 측정",
+        },
+    },
+    "domain_validity": {
+        "label": "컬럼 특성 유효성 검증",
+        "criteria": {
+            "date_domain": "날짜 데이터를 저장하는 컬럼의 데이터 값이 유효한 범위를 벗어나는 오류를 측정",
+            "number_domain": "정해진 규칙 등에 따라 관리되는 번호 도메인 데이터 오류를 측정",
+            "boolean_domain": "여부/유무 등 2값 분류 도메인 컬럼의 유효값 범위 이탈 오류를 측정",
+            "code_domain": "코드 또는 분류값이 컬럼 의미와 일관되게 적용되는지를 측정",
+            "categorical_semantic_domain": "범주형 문자열 컬럼의 고유값이 동일 도메인 체계와 의미적으로 일관되게 사용되는지를 측정",
+            "amount_domain": "숫자로 저장된 금액 도메인 컬럼의 값이 유효한 범위를 벗어나는 오류를 측정",
+            "quantity_domain": "숫자로 저장된 수량 도메인 컬럼의 값이 유효한 범위를 벗어나는 오류를 측정",
+            "rate_domain": "숫자로 저장된 율 도메인 컬럼의 값이 유효한 범위를 벗어나는 오류를 측정",
+        },
+    },
+}
 
 TAG_RULE_MAP = {
     "date": ["date_domain", "time_sequence_consistency", "precedence_accuracy"],

@@ -274,3 +274,191 @@ def test_reference_relationship_skips_plain_beopjeongdong_to_name_mapping() -> N
     findings = validate_dataset_relationships(columns, rows, candidates)
 
     assert [finding.rule_id for finding in findings] == []
+
+
+def test_reference_relationship_skips_local_admin_code_name_variants() -> None:
+    columns = [
+        ColumnProfile(
+            raw_name="시군구코드",
+            normalized_name="시군구코드",
+            source="response",
+            semantic_tags=["code"],
+            assigned_rules=["reference_relation"],
+            inferred_primitive_type="text",
+            non_empty_count=2,
+            distinct_count=1,
+            sample_values=["380"],
+            top_values=[("380", 2)],
+        ),
+        ColumnProfile(
+            raw_name="시군구명칭",
+            normalized_name="시군구명칭",
+            source="response",
+            semantic_tags=["name"],
+            assigned_rules=["reference_relation"],
+            inferred_primitive_type="text",
+            non_empty_count=2,
+            distinct_count=2,
+            sample_values=["사하구", "은평구"],
+            top_values=[("사하구", 1), ("은평구", 1)],
+        ),
+    ]
+    rows = [
+        {"시군구코드": "380", "시군구명칭": "사하구"},
+        {"시군구코드": "380", "시군구명칭": "은평구"},
+    ]
+    candidates = [
+        {
+            "rule_id": "reference_relation",
+            "columns": ["시군구코드", "시군구명칭"],
+            "confidence": 0.99,
+        }
+    ]
+
+    findings = validate_dataset_relationships(columns, rows, candidates)
+
+    assert [finding.rule_id for finding in findings] == []
+
+
+def test_reference_relationship_keeps_long_official_local_admin_code() -> None:
+    columns = [
+        ColumnProfile(
+            raw_name="법정동코드",
+            normalized_name="법정동코드",
+            source="response",
+            semantic_tags=["code"],
+            assigned_rules=["reference_relation"],
+            inferred_primitive_type="text",
+            non_empty_count=2,
+            distinct_count=1,
+            sample_values=["1111010100"],
+            top_values=[("1111010100", 2)],
+        ),
+        ColumnProfile(
+            raw_name="법정동명",
+            normalized_name="법정동명",
+            source="response",
+            semantic_tags=["name"],
+            assigned_rules=["reference_relation"],
+            inferred_primitive_type="text",
+            non_empty_count=2,
+            distinct_count=2,
+            sample_values=["청운동", "효자동"],
+            top_values=[("청운동", 1), ("효자동", 1)],
+        ),
+    ]
+    rows = [
+        {"법정동코드": "1111010100", "법정동명": "청운동"},
+        {"법정동코드": "1111010100", "법정동명": "효자동"},
+    ]
+    candidates = [
+        {
+            "rule_id": "reference_relation",
+            "columns": ["법정동코드", "법정동명"],
+            "confidence": 0.99,
+        }
+    ]
+
+    findings = validate_dataset_relationships(columns, rows, candidates)
+
+    assert [finding.rule_id for finding in findings] == ["reference_relation"]
+
+
+def test_reference_relationship_ignores_whitespace_only_name_differences() -> None:
+    columns = [
+        ColumnProfile(
+            raw_name="기관코드",
+            normalized_name="기관코드",
+            source="response",
+            semantic_tags=["code"],
+            assigned_rules=["reference_relation"],
+            inferred_primitive_type="text",
+            non_empty_count=2,
+            distinct_count=1,
+            sample_values=["A-01"],
+            top_values=[("A-01", 2)],
+        ),
+        ColumnProfile(
+            raw_name="기관명",
+            normalized_name="기관명",
+            source="response",
+            semantic_tags=["name"],
+            assigned_rules=["reference_relation"],
+            inferred_primitive_type="text",
+            non_empty_count=2,
+            distinct_count=2,
+            sample_values=["서울 센터", "서울센터"],
+            top_values=[("서울 센터", 1), ("서울센터", 1)],
+        ),
+    ]
+    rows = [
+        {"기관코드": "A-01", "기관명": "서울 센터"},
+        {"기관코드": "A-01", "기관명": "서울센터"},
+    ]
+    candidates = [
+        {
+            "rule_id": "reference_relation",
+            "columns": ["기관코드", "기관명"],
+            "confidence": 0.99,
+        }
+    ]
+
+    findings = validate_dataset_relationships(columns, rows, candidates)
+
+    assert [finding.rule_id for finding in findings] == []
+
+
+def test_reference_relationship_ignores_three_column_candidates() -> None:
+    columns = [
+        ColumnProfile(
+            raw_name="기관코드",
+            normalized_name="기관코드",
+            source="response",
+            semantic_tags=["code"],
+            assigned_rules=["reference_relation"],
+            inferred_primitive_type="text",
+            non_empty_count=2,
+            distinct_count=1,
+            sample_values=["A-01"],
+            top_values=[("A-01", 2)],
+        ),
+        ColumnProfile(
+            raw_name="기관명",
+            normalized_name="기관명",
+            source="response",
+            semantic_tags=["name"],
+            assigned_rules=["reference_relation"],
+            inferred_primitive_type="text",
+            non_empty_count=2,
+            distinct_count=2,
+            sample_values=["기관A", "기관B"],
+            top_values=[("기관A", 1), ("기관B", 1)],
+        ),
+        ColumnProfile(
+            raw_name="기관유형",
+            normalized_name="기관유형",
+            source="response",
+            semantic_tags=["enum"],
+            assigned_rules=[],
+            inferred_primitive_type="text",
+            non_empty_count=2,
+            distinct_count=1,
+            sample_values=["공공"],
+            top_values=[("공공", 2)],
+        ),
+    ]
+    rows = [
+        {"기관코드": "A-01", "기관명": "기관A", "기관유형": "공공"},
+        {"기관코드": "A-01", "기관명": "기관B", "기관유형": "공공"},
+    ]
+    candidates = [
+        {
+            "rule_id": "reference_relation",
+            "columns": ["기관코드", "기관명", "기관유형"],
+            "confidence": 0.99,
+        }
+    ]
+
+    findings = validate_dataset_relationships(columns, rows, candidates)
+
+    assert [finding.rule_id for finding in findings] == []

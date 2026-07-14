@@ -1,7 +1,6 @@
 from __future__ import annotations
 
-from backend.domain.policies.shared.settings import CATEGORICAL_LLM_MIN_REPEAT_COUNT
-
+CATEGORICAL_LLM_MIN_REPEAT_COUNT = 2
 CATEGORICAL_LLM_MIN_DISTINCT = 2
 CATEGORICAL_LLM_MAX_VALUES = 60
 CATEGORICAL_LLM_CONFIDENCE_THRESHOLD = 0.9
@@ -79,3 +78,117 @@ ROW_CONTEXT_SIGNAL_SCORES = {
     "default": {ROW_CONTEXT_UNIQUE_VALUE_COUNT: 30, ROW_CONTEXT_RARE_VALUE_COUNT: 20},
 }
 ROW_CONTEXT_EARLY_SAMPLE_REASON = "early sample row"
+
+SHORT_KOREAN_PREFIX_LEN = 2
+MIN_TRUNCATED_PREFIX_LEN = 3
+MIN_TRUNCATED_PREFIX_RATIO = 0.25
+ENTITY_COMPLETION_SUFFIXES = {
+    "교",
+    "원",
+    "관",
+    "소",
+    "당",
+    "집",
+    "학교",
+    "유치원",
+    "어린이집",
+    "병원",
+    "의원",
+    "약국",
+    "학원",
+    "센터",
+    "회관",
+    "복지관",
+    "도서관",
+    "보건소",
+    "경로당",
+    "관리소",
+}
+INSTITUTION_SUFFIX_COMPLETIONS = {
+    "유치": "유치원",
+    "초등": "초등학교",
+    "초등학": "초등학교",
+    "어린이": "어린이집",
+}
+COMPLETE_LOCATION_VALUES = {
+    "정문",
+    "후문",
+    "입구",
+    "교내",
+    "본관",
+    "별관",
+    "강당",
+    "운동장",
+    "주차장",
+    "앞",
+    "뒤",
+    "뒷편",
+    "뒤편",
+    "서편",
+    "동편",
+    "남편",
+    "북편",
+    "지상",
+    "지하",
+}
+FACILITY_QUALIFIER_SUFFIXES = {
+    "주차장",
+    "명절주차장",
+    "체육관주차장",
+    "운동장주차장",
+    "공영주차장",
+}
+CATEGORY_QUALIFIER_SUFFIXES = {
+    "가칭",
+    "미상",
+    "불명",
+    "예정",
+    "의심",
+    "잠정",
+    "추정",
+}
+ORGANIZATION_BRANCH_SUFFIX_PATTERNS = (
+    r"^[가-힣]+(?:특별자치도|특별자치시|광역시|특별시|자치도|도|시|군|구)(?:지부|지회|분회|본부|본점|지점|출장소|사무소)$",
+    r"^(?:중앙|지역|권역|광역|전국|본부|본점|지점|지부|지회|분회|출장소|사무소)$",
+)
+STRUCTURED_DETAIL_EXACT_SUFFIXES = {
+    "정문",
+    "후문",
+    "입구",
+    "출입구",
+    "앞",
+    "뒤",
+    "뒷편",
+    "뒤편",
+    "동편",
+    "서편",
+    "남편",
+    "북편",
+    "지상",
+    "지하",
+    "본관",
+    "별관",
+    "분관",
+    "동관",
+    "서관",
+    "남관",
+    "북관",
+    "중앙관",
+    "신관",
+    "구관",
+}
+STRUCTURED_DETAIL_EXACT_SUFFIXES_BY_LENGTH = tuple(sorted(STRUCTURED_DETAIL_EXACT_SUFFIXES, key=len, reverse=True))
+STRUCTURED_DETAIL_COMPONENT_PATTERNS = (
+    r"^(?:지하|B)\d+층",
+    r"^\d+(?:,\d+)*층",
+    r"^\d+-\d+층",
+    r"^\d+호실",
+    r"^\d+호",
+    r"^\d+실",
+    r"^\d+동",
+    r"^[A-Z]동",
+    r"^\d+번출구",
+    r"^\d+게이트",
+    r"^[A-Z]게이트",
+)
+NAMED_DETAIL_PREFIX_PATTERNS = (r"^[가-힣A-Za-z0-9]+역",)

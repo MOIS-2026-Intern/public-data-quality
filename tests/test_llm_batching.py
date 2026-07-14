@@ -300,3 +300,181 @@ def test_column_resolver_filters_plain_beopjeongdong_reference_relationships() -
     )
 
     assert resolved == []
+
+
+def test_column_resolver_filters_local_admin_code_name_variants() -> None:
+    columns = [
+        ColumnProfile(
+            raw_name="행정동코드",
+            normalized_name="행정동코드",
+            source="response",
+            semantic_tags=["code"],
+            assigned_rules=["reference_relation"],
+            sample_values=["101"],
+            top_values=[("101", 2)],
+            inferred_primitive_type="string",
+            distinct_count=1,
+            non_empty_count=2,
+        ),
+        ColumnProfile(
+            raw_name="행정동명칭",
+            normalized_name="행정동명칭",
+            source="response",
+            semantic_tags=["name"],
+            assigned_rules=["reference_relation"],
+            sample_values=["충무로동", "을지로동"],
+            top_values=[("충무로동", 1), ("을지로동", 1)],
+            inferred_primitive_type="string",
+            distinct_count=2,
+            non_empty_count=2,
+        ),
+    ]
+    resolver = LLMColumnResolver(
+        fast_llm=FakeRelationshipLLM(
+            {
+                "relationship_candidates": [
+                    {
+                        "rule_id": "reference_relation",
+                        "columns": ["행정동코드", "행정동명칭"],
+                        "confidence": 0.99,
+                        "reason": "코드와 명칭 대응으로 보입니다.",
+                    }
+                ]
+            }
+        )
+    )
+
+    resolved = resolver.resolve_relationships(
+        {
+            "dataset_meta": DatasetMeta(dataset_id="d", dataset_name="테스트", provider_name="기관"),
+            "columns": columns,
+        },
+        columns,
+    )
+
+    assert resolved == []
+
+
+def test_column_resolver_keeps_long_official_local_admin_code_relationships() -> None:
+    columns = [
+        ColumnProfile(
+            raw_name="행정동코드",
+            normalized_name="행정동코드",
+            source="response",
+            semantic_tags=["code"],
+            assigned_rules=["reference_relation"],
+            sample_values=["1114012300"],
+            top_values=[("1114012300", 2)],
+            inferred_primitive_type="string",
+            distinct_count=1,
+            non_empty_count=2,
+        ),
+        ColumnProfile(
+            raw_name="행정동명",
+            normalized_name="행정동명",
+            source="response",
+            semantic_tags=["name"],
+            assigned_rules=["reference_relation"],
+            sample_values=["충무로동", "을지로동"],
+            top_values=[("충무로동", 1), ("을지로동", 1)],
+            inferred_primitive_type="string",
+            distinct_count=2,
+            non_empty_count=2,
+        ),
+    ]
+    resolver = LLMColumnResolver(
+        fast_llm=FakeRelationshipLLM(
+            {
+                "relationship_candidates": [
+                    {
+                        "rule_id": "reference_relation",
+                        "columns": ["행정동코드", "행정동명"],
+                        "confidence": 0.99,
+                        "reason": "코드와 명칭 대응으로 보입니다.",
+                    }
+                ]
+            }
+        )
+    )
+
+    resolved = resolver.resolve_relationships(
+        {
+            "dataset_meta": DatasetMeta(dataset_id="d", dataset_name="테스트", provider_name="기관"),
+            "columns": columns,
+        },
+        columns,
+    )
+
+    assert resolved == [
+        {
+            "rule_id": "reference_relation",
+            "columns": ["행정동코드", "행정동명"],
+            "confidence": 0.99,
+            "reason": "코드와 명칭 대응으로 보입니다.",
+        }
+    ]
+
+
+def test_column_resolver_drops_three_column_reference_candidates() -> None:
+    columns = [
+        ColumnProfile(
+            raw_name="기관코드",
+            normalized_name="기관코드",
+            source="response",
+            semantic_tags=["code"],
+            assigned_rules=["reference_relation"],
+            sample_values=["A-01"],
+            top_values=[("A-01", 2)],
+            inferred_primitive_type="string",
+            distinct_count=1,
+            non_empty_count=2,
+        ),
+        ColumnProfile(
+            raw_name="기관명",
+            normalized_name="기관명",
+            source="response",
+            semantic_tags=["name"],
+            assigned_rules=["reference_relation"],
+            sample_values=["기관A", "기관B"],
+            top_values=[("기관A", 1), ("기관B", 1)],
+            inferred_primitive_type="string",
+            distinct_count=2,
+            non_empty_count=2,
+        ),
+        ColumnProfile(
+            raw_name="기관유형",
+            normalized_name="기관유형",
+            source="response",
+            semantic_tags=["enum"],
+            assigned_rules=[],
+            sample_values=["공공"],
+            top_values=[("공공", 2)],
+            inferred_primitive_type="string",
+            distinct_count=1,
+            non_empty_count=2,
+        ),
+    ]
+    resolver = LLMColumnResolver(
+        fast_llm=FakeRelationshipLLM(
+            {
+                "relationship_candidates": [
+                    {
+                        "rule_id": "reference_relation",
+                        "columns": ["기관코드", "기관명", "기관유형"],
+                        "confidence": 0.99,
+                        "reason": "세 컬럼이 함께 보입니다.",
+                    }
+                ]
+            }
+        )
+    )
+
+    resolved = resolver.resolve_relationships(
+        {
+            "dataset_meta": DatasetMeta(dataset_id="d", dataset_name="테스트", provider_name="기관"),
+            "columns": columns,
+        },
+        columns,
+    )
+
+    assert resolved == []

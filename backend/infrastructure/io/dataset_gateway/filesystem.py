@@ -5,7 +5,7 @@ from pathlib import Path
 
 from backend.domain.entities.models import DatasetMeta
 
-from .loaders import iter_uploaded_rows, load_dataset_meta, load_uploaded_dataset_meta
+from ..loaders import iter_uploaded_rows, load_dataset_meta, load_uploaded_dataset_meta
 
 
 class FilesystemDatasetGateway:

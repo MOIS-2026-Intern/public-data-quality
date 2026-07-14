@@ -1,10 +1,33 @@
 from __future__ import annotations
 
-from backend.domain.policies.shared.settings import (
-    LLM_SEMANTIC_PROFILE_ALWAYS_TRIGGER_TAGS,
-    LLM_SEMANTIC_PROFILE_AMBIGUOUS_TERMS,
-    LLM_SEMANTIC_PROFILE_SKIP_TAGS,
-)
+LLM_SEMANTIC_PROFILE_ALWAYS_TRIGGER_TAGS = {"address"}
+LLM_SEMANTIC_PROFILE_SKIP_TAGS = {
+    "date",
+    "phone",
+    "geo_lat",
+    "geo_lon",
+    "coordinate_pair",
+    "boolean",
+    "amount",
+    "quantity",
+    "count",
+    "rate",
+    "width",
+}
+LLM_SEMANTIC_PROFILE_AMBIGUOUS_TERMS = {
+    "구분",
+    "상태",
+    "코드",
+    "번호",
+    "명",
+    "명칭",
+    "값",
+    "내용",
+    "유형",
+    "종류",
+    "정보",
+    "데이터",
+}
 
 LLM_FAST_MODEL = "gpt-4o-mini"
 LLM_STRONG_MODEL = "gpt-4o"

@@ -1,13 +1,15 @@
 from __future__ import annotations
 
-from backend.domain.entities.models import ValidationFinding
-from ..shared.settings import (
+from backend.config.column_rules import (
     REQUIRED_VALUE_NON_UNIQUE_NAME_TOKENS,
     REQUIRED_VALUE_NULL_MAX_RATIO,
     REQUIRED_VALUE_UNIQUE_IDENTIFIER_NAME_TOKENS,
+    SEJONG_SIDO_VALUES,
 )
-from .free_text import looks_free_text_column
+from backend.domain.entities.models import ValidationFinding
+
 from .context import ColumnRuleContext
+from .free_text import looks_free_text_column
 from .helpers import (
     duplicate_value_row_indexes,
     is_likely_required,
@@ -22,66 +24,6 @@ from ..shared.text_checks import (
     has_strong_whitespace_issue,
     has_whitespace_issue,
 )
-
-SEJONG_SIDO_VALUES = {"세종특별자치시", "세종시"}
-
-
-def _normalize_name_for_identifier_check(value: str) -> str:
-    return value.replace(" ", "").replace("_", "").replace("-", "").upper()
-
-
-def _normalize_column_name(value: str) -> str:
-    return value.replace(" ", "").replace("_", "").replace("-", "")
-
-
-def _looks_unique_identifier_column(context: ColumnRuleContext) -> bool:
-    column = context.column
-    name = _normalize_name_for_identifier_check(f"{column.raw_name}{column.normalized_name}")
-    if not any(token.upper() in name for token in REQUIRED_VALUE_UNIQUE_IDENTIFIER_NAME_TOKENS):
-        return False
-    if any(token.upper() in name for token in REQUIRED_VALUE_NON_UNIQUE_NAME_TOKENS):
-        return False
-    if column.non_empty_count <= 1 or column.distinct_count is None:
-        return False
-    distinct_ratio = column.distinct_count / column.non_empty_count
-    return distinct_ratio >= 0.8
-
-
-def _looks_sigungu_column(context: ColumnRuleContext) -> bool:
-    name = _normalize_column_name(f"{context.column.raw_name}{context.column.normalized_name}")
-    return "시군구" in name
-
-
-def _find_sido_column_name(context: ColumnRuleContext) -> str | None:
-    if not context.rows:
-        return None
-
-    current_name = context.column.raw_name
-    fallback_matches: list[str] = []
-    for name in context.rows[0].keys():
-        if name == current_name:
-            continue
-        normalized_name = _normalize_column_name(name)
-        if normalized_name == "시도명":
-            return name
-        if normalized_name in {"시도", "광역시도", "광역시도명"} or "시도" in normalized_name:
-            fallback_matches.append(name)
-    return fallback_matches[0] if fallback_matches else None
-
-
-def _optional_sigungu_row_indexes(context: ColumnRuleContext) -> set[int]:
-    if not _looks_sigungu_column(context):
-        return set()
-
-    sido_column_name = _find_sido_column_name(context)
-    if not sido_column_name:
-        return set()
-
-    optional_rows: set[int] = set()
-    for row_index, row in enumerate(context.rows, start=1):
-        if (row.get(sido_column_name) or "").strip() in SEJONG_SIDO_VALUES:
-            optional_rows.add(row_index)
-    return optional_rows
 
 
 def find_garbled_text(context: ColumnRuleContext) -> list[ValidationFinding]:
@@ -245,7 +187,7 @@ def find_required_nulls(context: ColumnRuleContext) -> list[ValidationFinding]:
     if not (is_likely_required(column) and (column.null_count or 0) > 0):
         return []
 
-    optional_row_indexes = _optional_sigungu_row_indexes(context)
+    optional_row_indexes = optional_sigungu_row_indexes(context)
     null_row_indexes = [
         row_index
         for row_index in matching_row_indexes(
@@ -292,7 +234,7 @@ def find_duplicate_identifiers(context: ColumnRuleContext) -> list[ValidationFin
     column = context.column
     if not (
         ("identifier" in column.semantic_tags or "duplicate_data" in column.assigned_rules)
-        and _looks_unique_identifier_column(context)
+        and looks_unique_identifier_column(context)
         and column.distinct_count is not None
         and column.non_empty_count > column.distinct_count
     ):
@@ -309,3 +251,60 @@ def find_duplicate_identifiers(context: ColumnRuleContext) -> list[ValidationFin
             evidence=[f"non_empty:{column.non_empty_count}", f"distinct:{column.distinct_count}"],
         )
     ]
+
+
+def looks_unique_identifier_column(context: ColumnRuleContext) -> bool:
+    column = context.column
+    name = _normalize_name_for_identifier_check(f"{column.raw_name}{column.normalized_name}")
+    if not any(token.upper() in name for token in REQUIRED_VALUE_UNIQUE_IDENTIFIER_NAME_TOKENS):
+        return False
+    if any(token.upper() in name for token in REQUIRED_VALUE_NON_UNIQUE_NAME_TOKENS):
+        return False
+    if column.non_empty_count <= 1 or column.distinct_count is None:
+        return False
+    return (column.distinct_count / column.non_empty_count) >= 0.8
+
+
+def optional_sigungu_row_indexes(context: ColumnRuleContext) -> set[int]:
+    if not _looks_sigungu_column(context):
+        return set()
+
+    sido_column_name = _find_sido_column_name(context)
+    if not sido_column_name:
+        return set()
+
+    optional_rows: set[int] = set()
+    for row_index, row in enumerate(context.rows, start=1):
+        if (row.get(sido_column_name) or "").strip() in SEJONG_SIDO_VALUES:
+            optional_rows.add(row_index)
+    return optional_rows
+
+
+def _normalize_name_for_identifier_check(value: str) -> str:
+    return value.replace(" ", "").replace("_", "").replace("-", "").upper()
+
+
+def _normalize_column_name(value: str) -> str:
+    return value.replace(" ", "").replace("_", "").replace("-", "")
+
+
+def _looks_sigungu_column(context: ColumnRuleContext) -> bool:
+    name = _normalize_column_name(f"{context.column.raw_name}{context.column.normalized_name}")
+    return "시군구" in name
+
+
+def _find_sido_column_name(context: ColumnRuleContext) -> str | None:
+    if not context.rows:
+        return None
+
+    current_name = context.column.raw_name
+    fallback_matches: list[str] = []
+    for name in context.rows[0].keys():
+        if name == current_name:
+            continue
+        normalized_name = _normalize_column_name(name)
+        if normalized_name == "시도명":
+            return name
+        if normalized_name in {"시도", "광역시도", "광역시도명"} or "시도" in normalized_name:
+            fallback_matches.append(name)
+    return fallback_matches[0] if fallback_matches else None

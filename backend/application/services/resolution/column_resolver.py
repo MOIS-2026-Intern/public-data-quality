@@ -276,6 +276,8 @@ class LLMColumnResolver:
             candidate_columns = list(dict.fromkeys(candidate_columns))
             if len(candidate_columns) < 2:
                 continue
+            if rule_id == "reference_relation" and len(candidate_columns) != 2:
+                continue
             resolved_columns = [by_name[name] for name in candidate_columns]
             if rule_id == "reference_relation" and is_non_unique_local_admin_reference_pair(
                 resolved_columns[0],
