@@ -18,6 +18,7 @@ from .workbook_support import (
     issue_messages_by_cell as _issue_messages_by_cell,
     report_filename as _report_filename,
     result_dataset_name as _result_dataset_name,
+    result_findings as _result_findings,
     result_headers as _result_headers,
     style_header_row as _style_header_row,
 )
@@ -42,6 +43,7 @@ def write_error_report(
     _write_summary_sheet(summary_sheet, result, validation_rows)
     _write_data_sheet(workbook.create_sheet("전체 데이터 오류 표시"), result, validation_rows)
     _write_findings_sheet(workbook.create_sheet("오류 상세"), result, validation_rows)
+    _write_manual_review_sheet(workbook.create_sheet("수동 검토 상세"), result, validation_rows)
 
     workbook.save(report_path)
     return report_path
@@ -62,6 +64,7 @@ def write_batch_error_report(
     successful_results = _successful_batch_results(items)
     _write_batch_summary_sheet(summary_sheet, successful_results)
     _write_batch_findings_sheet(workbook.create_sheet("오류 상세"), successful_results)
+    _write_batch_manual_review_sheet(workbook.create_sheet("수동 검토 상세"), successful_results)
 
     workbook.save(report_path)
     return report_path
@@ -123,17 +126,18 @@ def _write_findings_sheet(sheet, result: dict[str, Any], validation_rows: list[d
     sheet.freeze_panes = "A2"
 
     dataset_name = str(result.get("summary", {}).get("dataset_name") or "")
-    for finding in result.get("findings", []):
-        if finding.get("finding_type") != "issue":
-            continue
+    for finding in _result_findings(result, finding_type="issue"):
         column_name = str(finding.get("column_name") or "")
         row_indexes = _finding_row_indexes(finding)
         if not row_indexes:
             row_indexes = [None]
         for row_index in row_indexes:
-            current_value = ""
-            if row_index and 0 < row_index <= len(validation_rows):
-                current_value = validation_rows[row_index - 1].get(column_name, "")
+            current_value = _row_current_value(
+                finding,
+                row_index=row_index,
+                validation_rows=validation_rows,
+                column_name=column_name,
+            )
             sheet.append(
                 [
                     dataset_name,
@@ -142,6 +146,41 @@ def _write_findings_sheet(sheet, result: dict[str, Any], validation_rows: list[d
                     current_value,
                     finding.get("message", ""),
                     finding.get("llm_final_verification", ""),
+                ]
+            )
+
+    _auto_width(sheet, max_width=48)
+
+
+def _write_manual_review_sheet(sheet, result: dict[str, Any], validation_rows: list[dict[str, str]]) -> None:
+    headers = [
+        "데이터명",
+        "컬럼명",
+        "행 번호",
+        "현재 값",
+        "오류 메세지",
+    ]
+    sheet.append(headers)
+    _style_header_row(sheet, 1)
+    sheet.freeze_panes = "A2"
+
+    dataset_name = str(result.get("summary", {}).get("dataset_name") or "")
+    for finding in _result_findings(result, finding_type="manual_review"):
+        column_name = str(finding.get("column_name") or "")
+        row_indexes = _finding_row_indexes(finding) or [None]
+        for row_index in row_indexes:
+            sheet.append(
+                [
+                    dataset_name,
+                    column_name,
+                    row_index or "",
+                    _row_current_value(
+                        finding,
+                        row_index=row_index,
+                        validation_rows=validation_rows,
+                        column_name=column_name,
+                    ),
+                    finding.get("message", ""),
                 ]
             )
 
@@ -162,7 +201,7 @@ def _write_batch_summary_sheet(sheet, results: list[dict[str, Any]]) -> None:
         ("전체 컬럼 수", sum(int(result.get("summary", {}).get("column_count") or 0) for result in results)),
         ("전체 행 수", sum(int(result.get("summary", {}).get("row_count") or 0) for result in results)),
         ("전체 오류 발생 컬럼 수", len(issue_columns)),
-        ("오류 발생 행 수", len(issue_rows)),
+        ("전체 오류 발생 행 수", len(issue_rows)),
     ]
     sheet.append(["항목", "값"])
     for row in rows:
@@ -187,9 +226,7 @@ def _write_batch_findings_sheet(sheet, results: list[dict[str, Any]]) -> None:
 
     for result in results:
         dataset_name = _result_dataset_name(result)
-        for finding in result.get("findings", []):
-            if finding.get("finding_type") != "issue":
-                continue
+        for finding in _result_findings(result, finding_type="issue"):
             column_name = str(finding.get("column_name") or "")
             row_indexes = _finding_row_indexes(finding) or [None]
             for row_index in row_indexes:
@@ -204,6 +241,51 @@ def _write_batch_findings_sheet(sheet, results: list[dict[str, Any]]) -> None:
                     ]
                 )
     _auto_width(sheet, max_width=48)
+
+
+def _write_batch_manual_review_sheet(sheet, results: list[dict[str, Any]]) -> None:
+    headers = [
+        "데이터명",
+        "컬럼명",
+        "행 번호",
+        "현재 값",
+        "오류 메세지",
+    ]
+    sheet.append(headers)
+    _style_header_row(sheet, 1)
+    sheet.freeze_panes = "A2"
+
+    for result in results:
+        dataset_name = _result_dataset_name(result)
+        for finding in _result_findings(result, finding_type="manual_review"):
+            column_name = str(finding.get("column_name") or "")
+            row_indexes = _finding_row_indexes(finding) or [None]
+            for row_index in row_indexes:
+                sheet.append(
+                    [
+                        dataset_name,
+                        column_name,
+                        row_index or "",
+                        _finding_current_value(finding, row_index),
+                        finding.get("message", ""),
+                    ]
+                )
+    _auto_width(sheet, max_width=48)
+
+
+def _row_current_value(
+    finding: dict[str, Any],
+    *,
+    row_index: int | None,
+    validation_rows: list[dict[str, str]],
+    column_name: str,
+) -> str:
+    current_value = _finding_current_value(finding, row_index)
+    if current_value or row_index is None:
+        return current_value
+    if 0 < row_index <= len(validation_rows):
+        return str(validation_rows[row_index - 1].get(column_name, ""))
+    return ""
 
 
 def _successful_batch_results(items: list[dict[str, Any]]) -> list[dict[str, Any]]:

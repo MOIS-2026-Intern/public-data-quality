@@ -26,6 +26,10 @@ def test_attach_report_paths_uses_unique_relative_artifact_names(tmp_path) -> No
 
     assert Path(first_csv).name == first_csv
     assert Path(first_report).name == first_report
+    assert first_csv == "quality_detection_results.csv"
+    assert second_csv == "quality_detection_results__2.csv"
+    assert first_report == "sample.xlsx"
+    assert second_report == "sample__2.xlsx"
     assert first_csv != second_csv
     assert first_report != second_report
     assert (tmp_path / "results" / first_csv).exists()

@@ -42,6 +42,14 @@ def finding_current_value(finding: dict[str, Any], row_index: int | None) -> str
     return ""
 
 
+def result_findings(result: dict[str, Any], *, finding_type: str) -> list[dict[str, Any]]:
+    return [
+        finding
+        for finding in result.get("findings", [])
+        if finding.get("finding_type") == finding_type
+    ]
+
+
 def result_headers(result: dict[str, Any], validation_rows: list[dict[str, str]]) -> list[str]:
     headers = [str(header) for header in result.get("preview_headers") or [] if str(header)]
     seen = set(headers)

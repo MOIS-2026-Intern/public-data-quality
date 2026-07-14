@@ -27,3 +27,14 @@ def test_error_report_filename_replaces_only_filesystem_unsafe_characters() -> N
 
 def test_download_name_preserves_korean() -> None:
     assert _download_name("화성시_어린이보호구역.xlsx") == "화성시_어린이보호구역.xlsx"
+
+
+def test_download_name_strips_numeric_collision_suffix() -> None:
+    assert _download_name("화성시_어린이보호구역__2.xlsx") == "화성시_어린이보호구역.xlsx"
+
+
+def test_download_name_strips_legacy_uuid_suffix() -> None:
+    assert (
+        _download_name("화성시_어린이보호구역__0123456789abcdef0123456789abcdef.xlsx")
+        == "화성시_어린이보호구역.xlsx"
+    )

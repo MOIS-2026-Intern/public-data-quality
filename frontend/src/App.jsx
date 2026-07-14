@@ -350,7 +350,9 @@ function expandedFindingRows(findings, previewRows) {
   });
 }
 
-function FindingRowsTable({ rows, emptyText }) {
+function FindingRowsTable({ rows, emptyText, showLlmFinalVerification = true }) {
+  const columnCount = showLlmFinalVerification ? 10 : 9;
+
   return (
     <div className="table-wrap finding-section-table-wrap">
       <table>
@@ -364,7 +366,7 @@ function FindingRowsTable({ rows, emptyText }) {
             <th>심각도</th>
             <th className="finding-cell-nowrap">규칙</th>
             <th className="finding-cell-nowrap">메시지</th>
-            <th className="finding-cell-nowrap">LLM 최종 검증</th>
+            {showLlmFinalVerification ? <th className="finding-cell-nowrap">LLM 최종 검증</th> : null}
             <th className="finding-cell-nowrap">관련 컬럼</th>
           </tr>
         </thead>
@@ -383,13 +385,13 @@ function FindingRowsTable({ rows, emptyText }) {
                 <td>{displayValue(formatSeverity(finding.severity))}</td>
                 <td className="finding-cell-nowrap">{displayValue(formatRuleId(finding.rule_id))}</td>
                 <td>{displayValue(finding.message)}</td>
-                <td>{displayValue(finding.llm_final_verification)}</td>
+                {showLlmFinalVerification ? <td>{displayValue(finding.llm_final_verification)}</td> : null}
                 <td className="finding-cell-nowrap">{displayValue(formatRelatedColumns(finding))}</td>
               </tr>
             ))
           ) : (
             <tr>
-              <td colSpan={10} className="finding-empty-cell">
+              <td colSpan={columnCount} className="finding-empty-cell">
                 {emptyText}
               </td>
             </tr>
@@ -442,7 +444,11 @@ function FindingsTable({ findings, previewRows }) {
           </button>
         ))}
       </div>
-      <FindingRowsTable rows={activeSection.rows} emptyText={activeSection.emptyText} />
+      <FindingRowsTable
+        rows={activeSection.rows}
+        emptyText={activeSection.emptyText}
+        showLlmFinalVerification={activeSection.id !== "manual-review"}
+      />
     </div>
   );
 }
