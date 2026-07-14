@@ -34,6 +34,19 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function shouldUseAnalyzeStream() {
+  const runtimeFlag = String(import.meta.env.VITE_VERCEL || import.meta.env.VITE_DEPLOYMENT_TARGET || "")
+    .trim()
+    .toLowerCase();
+  if (runtimeFlag === "1" || runtimeFlag === "true" || runtimeFlag === "vercel") {
+    return true;
+  }
+  if (typeof window === "undefined") {
+    return false;
+  }
+  return (window.location.hostname || "").toLowerCase().endsWith(".vercel.app");
+}
+
 function ControlPanel({
   sourceType,
   setSourceType,
@@ -733,6 +746,63 @@ function App() {
     }
   }
 
+  function applyAnalyzeStreamEvent(event, state) {
+    if (event.type === "progress" || event.type === "file_done" || event.type === "file_error" || event.type === "final") {
+      updateProgress(event);
+    }
+    if (event.type === "file_error" && event.error) {
+      state.streamError = event.error;
+    }
+    if (event.type === "final") {
+      state.finalPayload = event.payload ?? null;
+    }
+  }
+
+  function parseAnalyzeStreamText(text, state) {
+    for (const line of text.split("\n")) {
+      if (!line.trim()) continue;
+      applyAnalyzeStreamEvent(JSON.parse(line), state);
+    }
+  }
+
+  async function parseAnalyzeStream(response) {
+    const state = { finalPayload: null, streamError: "" };
+
+    if (!response.body) {
+      parseAnalyzeStreamText(await response.text(), state);
+    } else {
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() || "";
+        for (const line of lines) {
+          if (!line.trim()) continue;
+          applyAnalyzeStreamEvent(JSON.parse(line), state);
+        }
+      }
+
+      buffer += decoder.decode();
+      if (buffer.trim()) {
+        applyAnalyzeStreamEvent(JSON.parse(buffer), state);
+      }
+    }
+
+    if (state.finalPayload?.error) {
+      throw new Error(state.finalPayload.error);
+    }
+    if (!state.finalPayload && state.streamError) {
+      throw new Error(state.streamError);
+    }
+    return state.finalPayload;
+  }
+
   function jobProgressEvent(job, fallbackMessage = "분석 중") {
     const total = Number(job?.total_items || job?.items?.length || expectedSourceCount() || 1);
     const processed = Number(job?.processed_items || 0);
@@ -799,7 +869,38 @@ function App() {
     }
   }
 
+  async function fetchAnalyzeStreamPayload(body) {
+    const response = await fetch("/api/analyze-stream", {
+      method: "POST",
+      body,
+    });
+
+    if (!response.ok) {
+      const responseText = await response.text();
+      let payload = null;
+      try {
+        payload = responseText.trim() ? JSON.parse(responseText) : null;
+      } catch {
+        payload = null;
+      }
+      throw new Error(payload?.error || responseText || "분석 요청에 실패했습니다.");
+    }
+
+    const payload = await parseAnalyzeStream(response);
+    if (!payload || !isAnalyzePayload(payload)) {
+      throw new Error("분석 응답 형식이 올바르지 않습니다.");
+    }
+    if (payload.error && !payload.batch) {
+      throw new Error(payload.error);
+    }
+    return payload;
+  }
+
   async function fetchAnalyzePayload(body) {
+    if (shouldUseAnalyzeStream()) {
+      return fetchAnalyzeStreamPayload(body);
+    }
+
     const response = await fetch("/api/analyze", {
       method: "POST",
       body,
