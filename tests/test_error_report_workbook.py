@@ -12,6 +12,7 @@ def _issue_finding(column_name: str, row_index: int, value: str, message: str) -
     return {
         "column_name": column_name,
         "finding_type": "issue",
+        "category_label": "컬럼 완결성 검증",
         "row_indexes": [row_index],
         "message": message,
         "llm_final_verification": "LLM 확인 결과 오류입니다.",
@@ -23,6 +24,7 @@ def _manual_review_finding(column_name: str, row_index: int, value: str, message
     return {
         "column_name": column_name,
         "finding_type": "manual_review",
+        "category_label": "컬럼 특성 유효성 검증",
         "row_indexes": [row_index],
         "message": message,
         "row_values": {str(row_index): value},
@@ -60,6 +62,7 @@ def test_single_error_report_uses_requested_sheets_and_detail_columns(tmp_path) 
         "데이터명",
         "컬럼명",
         "행 번호",
+        "검증영역",
         "현재 값",
         "오류 메세지",
         "LLM 최종 검증",
@@ -68,6 +71,7 @@ def test_single_error_report_uses_requested_sheets_and_detail_columns(tmp_path) 
         "화성시_어린이보호구역.csv",
         "가격",
         2,
+        "컬럼 완결성 검증",
         "메뉴삭제",
         "금액 컬럼에 금액이 아닌 값이 있습니다.",
         "LLM 확인 결과 오류입니다.",
@@ -76,6 +80,7 @@ def test_single_error_report_uses_requested_sheets_and_detail_columns(tmp_path) 
         "데이터명",
         "컬럼명",
         "행 번호",
+        "검증영역",
         "현재 값",
         "오류 메세지",
     ]
@@ -83,6 +88,7 @@ def test_single_error_report_uses_requested_sheets_and_detail_columns(tmp_path) 
         "화성시_어린이보호구역.csv",
         "시설명",
         1,
+        "컬럼 특성 유효성 검증",
         "A",
         "시설명 값은 의미 판정이 애매해 수동 검토가 필요합니다.",
     ]
@@ -129,6 +135,7 @@ def test_batch_error_report_has_summary_and_detail_sheets(tmp_path) -> None:
         "A.csv",
         "가격",
         2,
+        "컬럼 완결성 검증",
         "메뉴삭제",
         "금액 오류",
         "LLM 확인 결과 오류입니다.",
@@ -137,6 +144,7 @@ def test_batch_error_report_has_summary_and_detail_sheets(tmp_path) -> None:
         "데이터명",
         "컬럼명",
         "행 번호",
+        "검증영역",
         "현재 값",
         "오류 메세지",
     ]
@@ -144,6 +152,7 @@ def test_batch_error_report_has_summary_and_detail_sheets(tmp_path) -> None:
         "A.csv",
         "시설명",
         1,
+        "컬럼 특성 유효성 검증",
         "A",
         "시설명은 수동 검토가 필요합니다.",
     ]

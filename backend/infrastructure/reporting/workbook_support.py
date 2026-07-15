@@ -42,6 +42,10 @@ def finding_current_value(finding: dict[str, Any], row_index: int | None) -> str
     return ""
 
 
+def finding_validation_area(finding: dict[str, Any]) -> str:
+    return str(finding.get("category_label") or "")
+
+
 def result_findings(result: dict[str, Any], *, finding_type: str) -> list[dict[str, Any]]:
     return [
         finding
