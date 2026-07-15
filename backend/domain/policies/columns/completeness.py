@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from backend.config.column_rules import (
     REQUIRED_VALUE_NON_UNIQUE_NAME_TOKENS,
-    REQUIRED_VALUE_NULL_MAX_RATIO,
+    REQUIRED_VALUE_NULL_MIN_RATIO,
     REQUIRED_VALUE_UNIQUE_IDENTIFIER_MIN_DISTINCT_RATIO,
     REQUIRED_VALUE_UNIQUE_IDENTIFIER_NAME_TOKENS,
     SEJONG_SIDO_VALUES,
@@ -234,13 +234,15 @@ def find_required_nulls(context: ColumnRuleContext) -> list[ValidationFinding]:
         if applicable_row_count and applicable_row_count > 0
         else column.null_ratio
     )
+    if (
+        effective_null_ratio is not None
+        and effective_null_ratio >= REQUIRED_VALUE_NULL_MIN_RATIO
+    ):
+        return []
+
     evidence = []
     if effective_null_ratio is not None:
         evidence.append(f"null_ratio:{effective_null_ratio}")
-        if effective_null_ratio > REQUIRED_VALUE_NULL_MAX_RATIO:
-            evidence.append(
-                f"expected_max_null_ratio:{REQUIRED_VALUE_NULL_MAX_RATIO}"
-            )
     if optional_row_indexes:
         evidence.append("conditional_optional:sejong_sigungu")
 
