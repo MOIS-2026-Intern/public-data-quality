@@ -7,7 +7,7 @@ _BROKEN_TEXT_RE = re.compile(r"[�]|[ㄱ-ㅎㅏ-ㅣ]{2,}")
 _PHONE_DIGIT_RE = re.compile(r"^[0-9+\-() ]+$")
 _MULTI_WHITESPACE_RE = re.compile(r"\s{2,}")
 _STRONG_MULTI_WHITESPACE_RE = re.compile(r"\s{3,}")
-_INNER_MULTI_WHITESPACE_RE = re.compile(r"(?P<left>\S+)(?P<gap>\s{2,})(?P<right>\S+)")
+_INNER_MULTI_WHITESPACE_RE = re.compile(r"\s{2,}")
 _RANGE_WHITESPACE_RE = re.compile(r"\S(?P<left>\s*)[~〜∼](?P<right>\s*)\S")
 
 
@@ -48,10 +48,23 @@ def describe_minor_whitespace_issue(value: str) -> list[str]:
     elif has_trailing:
         descriptions.append("문자열 맨 뒤에 공백이 의심됩니다.")
 
-    inner_match = _INNER_MULTI_WHITESPACE_RE.search(value)
-    if inner_match:
-        left = inner_match.group("left").strip()
-        right = inner_match.group("right").strip()
+    for inner_match in _INNER_MULTI_WHITESPACE_RE.finditer(value):
+        start = inner_match.start()
+        end = inner_match.end()
+        if start == 0 or end >= len(value):
+            continue
+        if value[start - 1].isspace() or value[end].isspace():
+            continue
+
+        left_start = start - 1
+        while left_start > 0 and not value[left_start - 1].isspace():
+            left_start -= 1
+        right_end = end
+        while right_end < len(value) and not value[right_end].isspace():
+            right_end += 1
+
+        left = value[left_start:start].strip()
+        right = value[end:right_end].strip()
         if left and right:
             descriptions.append(f"'{left}'과 '{right}' 사이에 공백 이상이 의심됩니다.")
 

@@ -6,6 +6,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from backend.domain.entities.models import ColumnProfile, DatasetMeta
 from backend.domain.policies.columns.rules import validate_column
 from backend.domain.policies.relationships import validate_dataset_relationships
+from backend.domain.policies.relationships.calculation_rules import validate_calculation_relationships
 
 
 def _dataset_meta() -> DatasetMeta:
@@ -91,6 +92,34 @@ def test_required_value_keeps_non_sejong_blank_sigungu() -> None:
     assert "null_ratio:0.05" in findings[0].evidence
 
 
+def test_required_value_still_reports_when_null_ratio_is_high() -> None:
+    rows = [{"기관명": ""} for _ in range(6)]
+    rows.extend({"기관명": f"기관{i}"} for i in range(1, 15))
+
+    column = ColumnProfile(
+        raw_name="기관명",
+        normalized_name="기관명",
+        source="response",
+        semantic_tags=["name"],
+        assigned_rules=["required_value"],
+        inferred_primitive_type="text",
+        non_empty_count=14,
+        null_count=6,
+        null_ratio=0.3,
+        distinct_count=14,
+        sample_values=["기관1", "기관2", "기관3"],
+        top_values=[("기관1", 1), ("기관2", 1), ("기관3", 1)],
+    )
+
+    findings = validate_column(column, _dataset_meta(), rows)
+
+    assert len(findings) == 1
+    assert findings[0].rule_id == "required_value"
+    assert findings[0].row_indexes == [1, 2, 3, 4, 5, 6]
+    assert "null_ratio:0.3" in findings[0].evidence
+    assert "expected_max_null_ratio:0.05" in findings[0].evidence
+
+
 def test_calculation_formula_relationships_are_disabled() -> None:
     columns = [
         ColumnProfile(
@@ -142,6 +171,93 @@ def test_calculation_formula_relationships_are_disabled() -> None:
     findings = validate_dataset_relationships(columns, rows, candidates)
 
     assert [finding.rule_id for finding in findings] == []
+
+
+def test_calculation_formula_supports_sum_of_multiple_component_columns() -> None:
+    columns = [
+        ColumnProfile(
+            raw_name="지급건수합계(건)",
+            normalized_name="지급건수합계(건)",
+            source="response",
+            semantic_tags=["count"],
+            assigned_rules=["calculation_formula"],
+            inferred_primitive_type="numeric",
+            non_empty_count=2,
+            distinct_count=2,
+            sample_values=["19", "20"],
+        ),
+        ColumnProfile(
+            raw_name="주택지급건수(건)",
+            normalized_name="주택지급건수(건)",
+            source="response",
+            semantic_tags=["count"],
+            assigned_rules=["calculation_formula"],
+            inferred_primitive_type="numeric",
+            non_empty_count=2,
+            distinct_count=1,
+            sample_values=["6"],
+        ),
+        ColumnProfile(
+            raw_name="온실지급건수(건)",
+            normalized_name="온실지급건수(건)",
+            source="response",
+            semantic_tags=["count"],
+            assigned_rules=["calculation_formula"],
+            inferred_primitive_type="numeric",
+            non_empty_count=2,
+            distinct_count=1,
+            sample_values=["8"],
+        ),
+        ColumnProfile(
+            raw_name="소상공인 지급건수(건)",
+            normalized_name="소상공인 지급건수(건)",
+            source="response",
+            semantic_tags=["count"],
+            assigned_rules=["calculation_formula"],
+            inferred_primitive_type="numeric",
+            non_empty_count=2,
+            distinct_count=1,
+            sample_values=["5"],
+        ),
+    ]
+    rows = [
+        {
+            "지급건수합계(건)": "19",
+            "주택지급건수(건)": "6",
+            "온실지급건수(건)": "8",
+            "소상공인 지급건수(건)": "5",
+        },
+        {
+            "지급건수합계(건)": "20",
+            "주택지급건수(건)": "6",
+            "온실지급건수(건)": "8",
+            "소상공인 지급건수(건)": "5",
+        },
+        {
+            "지급건수합계(건)": "20",
+            "주택지급건수(건)": "6",
+            "온실지급건수(건)": "8",
+            "소상공인 지급건수(건)": "5",
+        },
+    ]
+    candidates = [
+        {
+            "rule_id": "calculation_formula",
+            "columns": [
+                "지급건수합계(건)",
+                "주택지급건수(건)",
+                "온실지급건수(건)",
+                "소상공인 지급건수(건)",
+            ],
+            "confidence": 0.99,
+        }
+    ]
+
+    findings = validate_calculation_relationships(columns, rows, candidates)
+
+    assert len(findings) == 1
+    assert findings[0].row_indexes == [2, 3]
+    assert "주택지급건수(건) + 온실지급건수(건) + 소상공인 지급건수(건)" in findings[0].message
 
 
 def test_reference_relationship_skips_plain_sigungu_to_sigungu_name_mapping() -> None:

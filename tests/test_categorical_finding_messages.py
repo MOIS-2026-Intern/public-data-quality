@@ -135,3 +135,229 @@ def test_row_context_manual_review_message_includes_value_and_reason() -> None:
     assert findings[0].rule_id == "row_context_manual_review"
     assert "불법주정차빈??" in findings[0].message
     assert "깨진 문자 ??" in findings[0].message
+
+
+def test_row_context_manual_review_skips_when_total_matches_multiple_components() -> None:
+    rows = [
+        {
+            "지급건수합계(건)": "19",
+            "주택지급건수(건)": "6",
+            "온실지급건수(건)": "8",
+            "소상공인 지급건수(건)": "5",
+        }
+    ]
+    columns = [
+        {"raw_name": "지급건수합계(건)", "normalized_name": "지급건수합계(건)"},
+        {"raw_name": "주택지급건수(건)", "normalized_name": "주택지급건수(건)"},
+        {"raw_name": "온실지급건수(건)", "normalized_name": "온실지급건수(건)"},
+        {"raw_name": "소상공인 지급건수(건)", "normalized_name": "소상공인 지급건수(건)"},
+    ]
+    result = {
+        "row_context_manual_reviews": [
+            {
+                "row_index": 1,
+                "column_name": "지급건수합계(건)",
+                "related_columns": [
+                    "지급건수합계(건)",
+                    "주택지급건수(건)",
+                    "온실지급건수(건)",
+                    "소상공인 지급건수(건)",
+                ],
+                "message": "지급건수합계와 지급건수 세부 항목 합계가 일치하지 않음",
+                "reason": "합계와 세부 건수 합산 결과가 다르게 보입니다.",
+                "confidence": 0.72,
+            }
+        ],
+        "_llm_model": "test",
+        "_llm_stage": "strong",
+        "_llm_escalated": True,
+    }
+    findings = []
+
+    generated, manual_generated = append_row_context_findings(
+        result=result,
+        rows=rows,
+        columns=columns,
+        findings=findings,
+    )
+
+    assert generated == 0
+    assert manual_generated == 0
+    assert findings == []
+
+
+def test_row_context_manual_review_keeps_when_total_mismatches_multiple_components() -> None:
+    rows = [
+        {
+            "지급건수합계(건)": "20",
+            "주택지급건수(건)": "6",
+            "온실지급건수(건)": "8",
+            "소상공인 지급건수(건)": "5",
+        }
+    ]
+    columns = [
+        {"raw_name": "지급건수합계(건)", "normalized_name": "지급건수합계(건)"},
+        {"raw_name": "주택지급건수(건)", "normalized_name": "주택지급건수(건)"},
+        {"raw_name": "온실지급건수(건)", "normalized_name": "온실지급건수(건)"},
+        {"raw_name": "소상공인 지급건수(건)", "normalized_name": "소상공인 지급건수(건)"},
+    ]
+    result = {
+        "row_context_manual_reviews": [
+            {
+                "row_index": 1,
+                "column_name": "지급건수합계(건)",
+                "related_columns": [
+                    "지급건수합계(건)",
+                    "주택지급건수(건)",
+                    "온실지급건수(건)",
+                    "소상공인 지급건수(건)",
+                ],
+                "message": "지급건수합계와 지급건수 세부 항목 합계가 일치하지 않음",
+                "reason": "합계와 세부 건수 합산 결과가 다르게 보입니다.",
+                "confidence": 0.72,
+            }
+        ],
+        "_llm_model": "test",
+        "_llm_stage": "strong",
+        "_llm_escalated": True,
+    }
+    findings = []
+
+    generated, manual_generated = append_row_context_findings(
+        result=result,
+        rows=rows,
+        columns=columns,
+        findings=findings,
+    )
+
+    assert generated == 0
+    assert manual_generated == 1
+    assert findings[0].rule_id == "row_context_manual_review"
+
+
+def test_row_context_manual_review_skips_uniqueness_only_message() -> None:
+    rows = [{"시도": "서 울"}]
+    columns = [{"raw_name": "시도", "normalized_name": "시도"}]
+    result = {
+        "row_context_manual_reviews": [
+            {
+                "row_index": 1,
+                "column_name": "시도",
+                "related_columns": ["시도"],
+                "message": "시도에 유일한 값 '서 울'을 포함하고 있습니다.",
+                "reason": "유일한 값이라 추가 확인이 필요합니다.",
+                "confidence": 0.72,
+            }
+        ],
+        "_llm_model": "test",
+        "_llm_stage": "strong",
+        "_llm_escalated": True,
+    }
+    findings = []
+
+    generated, manual_generated = append_row_context_findings(
+        result=result,
+        rows=rows,
+        columns=columns,
+        findings=findings,
+    )
+
+    assert generated == 0
+    assert manual_generated == 0
+    assert findings == []
+
+
+def test_row_context_manual_review_skips_sido_spacing_style_message() -> None:
+    rows = [{"시도": "서 울"}]
+    columns = [{"raw_name": "시도", "normalized_name": "시도"}]
+    result = {
+        "row_context_manual_reviews": [
+            {
+                "row_index": 1,
+                "column_name": "시도",
+                "related_columns": ["시도"],
+                "message": "'시도' 값이 '서 울'로 표기되었습니다.",
+                "reason": "시도 표기가 일반적인 띄어쓰기와 다릅니다.",
+                "confidence": 0.72,
+            }
+        ],
+        "_llm_model": "test",
+        "_llm_stage": "strong",
+        "_llm_escalated": True,
+    }
+    findings = []
+
+    generated, manual_generated = append_row_context_findings(
+        result=result,
+        rows=rows,
+        columns=columns,
+        findings=findings,
+    )
+
+    assert generated == 0
+    assert manual_generated == 0
+    assert findings == []
+
+
+def test_row_context_manual_review_skips_sido_spacing_generic_special_message() -> None:
+    rows = [{"시도": "서 울"}]
+    columns = [{"raw_name": "시도", "normalized_name": "시도"}]
+    result = {
+        "row_context_manual_reviews": [
+            {
+                "row_index": 1,
+                "column_name": "시도",
+                "related_columns": ["시도"],
+                "message": "'서 울' 특이함",
+                "reason": "",
+                "confidence": 0.72,
+            }
+        ],
+        "_llm_model": "test",
+        "_llm_stage": "strong",
+        "_llm_escalated": True,
+    }
+    findings = []
+
+    generated, manual_generated = append_row_context_findings(
+        result=result,
+        rows=rows,
+        columns=columns,
+        findings=findings,
+    )
+
+    assert generated == 0
+    assert manual_generated == 0
+    assert findings == []
+
+
+def test_row_context_manual_review_skips_generic_value_only_review_message() -> None:
+    rows = [{"온실지급건수(건)": "247"}]
+    columns = [{"raw_name": "온실지급건수(건)", "normalized_name": "온실지급건수(건)"}]
+    result = {
+        "row_context_manual_reviews": [
+            {
+                "row_index": 1,
+                "column_name": "온실지급건수(건)",
+                "related_columns": ["온실지급건수(건)"],
+                "message": "'온실지급건수(건)' 값이 '247'인 경우 검토.",
+                "reason": "",
+                "confidence": 0.72,
+            }
+        ],
+        "_llm_model": "test",
+        "_llm_stage": "strong",
+        "_llm_escalated": True,
+    }
+    findings = []
+
+    generated, manual_generated = append_row_context_findings(
+        result=result,
+        rows=rows,
+        columns=columns,
+        findings=findings,
+    )
+
+    assert generated == 0
+    assert manual_generated == 0
+    assert findings == []

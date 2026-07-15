@@ -1,9 +1,13 @@
 from __future__ import annotations
 
+from collections import Counter
+
 from backend.config.categorical import CATEGORICAL_LLM_CONFIDENCE_THRESHOLD
 from backend.domain.policies.categorical import value_rows
 from backend.domain.policies.categorical.column import (
+    has_only_sido_spacing_variants,
     is_public_private_category_value,
+    is_low_ratio_sido_spacing_variant,
     is_yn_value,
     looks_boolean_column,
     looks_date_column,
@@ -29,19 +33,30 @@ def apply_llm_categorical_findings(
     result: dict,
     findings: list,
 ) -> int:
+    counter = Counter(
+        (row.get(column.raw_name) or "").strip()
+        for row in rows
+        if (row.get(column.raw_name) or "").strip()
+    )
     if looks_free_text_column(column):
-        return _append_out_of_domain_findings(column=column, rows=rows, result=result, findings=findings)
+        return _append_out_of_domain_findings(
+            column=column,
+            rows=rows,
+            result=result,
+            findings=findings,
+            counter=counter,
+        )
 
     generated = 0
-    generated += _append_normalization_findings(column=column, rows=rows, result=result, findings=findings)
+    generated += _append_normalization_findings(column=column, rows=rows, result=result, findings=findings, counter=counter)
     generated += _append_invalid_format_findings(column=column, rows=rows, result=result, findings=findings)
     generated += _append_inconsistent_format_findings(column=column, rows=rows, result=result, findings=findings)
-    generated += _append_out_of_domain_findings(column=column, rows=rows, result=result, findings=findings)
-    generated += _append_manual_review_findings(column=column, rows=rows, result=result, findings=findings)
+    generated += _append_out_of_domain_findings(column=column, rows=rows, result=result, findings=findings, counter=counter)
+    generated += _append_manual_review_findings(column=column, rows=rows, result=result, findings=findings, counter=counter)
     return generated
 
 
-def _append_normalization_findings(*, column, rows: list[dict[str, str]], result: dict, findings: list) -> int:
+def _append_normalization_findings(*, column, rows: list[dict[str, str]], result: dict, findings: list, counter: Counter[str]) -> int:
     generated = 0
     for item in result.get("normalizations", []):
         confidence = float(item.get("confidence") or 0.0)
@@ -50,6 +65,8 @@ def _append_normalization_findings(*, column, rows: list[dict[str, str]], result
         source = str(item.get("source") or "").strip()
         target = str(item.get("target") or "").strip()
         reason = clean_reason_text(item.get("reason"))
+        if is_low_ratio_sido_spacing_variant(column, source, counter):
+            continue
         if not is_llm_normalization_actionable(column, source, target, reason):
             continue
 
@@ -181,7 +198,7 @@ def _append_inconsistent_format_findings(
     return generated
 
 
-def _append_out_of_domain_findings(*, column, rows: list[dict[str, str]], result: dict, findings: list) -> int:
+def _append_out_of_domain_findings(*, column, rows: list[dict[str, str]], result: dict, findings: list, counter: Counter[str]) -> int:
     generated = 0
     for item in result.get("out_of_domain_values", []):
         confidence = float(item.get("confidence") or 0.0)
@@ -189,6 +206,8 @@ def _append_out_of_domain_findings(*, column, rows: list[dict[str, str]], result
             continue
         value = str(item.get("value") or "").strip()
         reason = clean_reason_text(item.get("reason"))
+        if is_low_ratio_sido_spacing_variant(column, value, counter):
+            continue
         if looks_institution_category_column(column) and is_public_private_category_value(value):
             continue
         if not value or not is_specific_out_of_domain_reason(reason):
@@ -210,13 +229,17 @@ def _append_out_of_domain_findings(*, column, rows: list[dict[str, str]], result
     return generated
 
 
-def _append_manual_review_findings(*, column, rows: list[dict[str, str]], result: dict, findings: list) -> int:
+def _append_manual_review_findings(*, column, rows: list[dict[str, str]], result: dict, findings: list, counter: Counter[str]) -> int:
     generated = 0
     for item in result.get("needs_manual_review", []):
         confidence = float(item.get("confidence") or 0.0)
         value = str(item.get("value") or "").strip()
         reason = clean_reason_text(item.get("reason"))
         if not value:
+            continue
+        if is_low_ratio_sido_spacing_variant(column, value, counter):
+            continue
+        if has_only_sido_spacing_variants(column, counter):
             continue
         row_indexes = value_rows(rows, column.raw_name, value)
         if _has_existing_value_finding(

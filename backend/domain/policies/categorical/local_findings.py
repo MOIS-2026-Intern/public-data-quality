@@ -11,6 +11,7 @@ from .column import (
     allows_institution_suffix_truncation,
     allows_local_prefix_truncation,
     allows_local_surface_normalization,
+    is_low_ratio_sido_spacing_variant,
     looks_free_text_column,
     looks_name_column,
 )
@@ -102,6 +103,13 @@ def apply_local_categorical_findings(
     if looks_free_text_column(column):
         return LocalCategoricalFindingCounts()
 
+    normalization_count = 0
+    truncated_count = 0
+    malformed_count = 0
+    non_name_count = 0
+    domain_variant_count = 0
+    context_free_replacement_count = 0
+
     def row_indexes_for(target_value: str) -> list[int]:
         return value_rows(rows, column.raw_name, target_value, value_row_indexes)
 
@@ -111,6 +119,8 @@ def apply_local_categorical_findings(
         else []
     )
     for source, target in normalization_pairs:
+        if is_low_ratio_sido_spacing_variant(column, source, counter):
+            continue
         finding = build_finding(
             column_name=column.raw_name,
             severity="warning",
@@ -126,6 +136,7 @@ def apply_local_categorical_findings(
         if key not in existing_finding_keys:
             findings.append(finding)
             existing_finding_keys.add(key)
+            normalization_count += 1
 
     domain_variant_pairs = (
         find_compact_domain_variant_pairs(counter)
@@ -133,6 +144,8 @@ def apply_local_categorical_findings(
         else []
     )
     for source, target in domain_variant_pairs:
+        if is_low_ratio_sido_spacing_variant(column, source, counter):
+            continue
         finding = build_finding(
             column_name=column.raw_name,
             severity="warning",
@@ -151,6 +164,7 @@ def apply_local_categorical_findings(
         if key not in existing_finding_keys:
             findings.append(finding)
             existing_finding_keys.add(key)
+            domain_variant_count += 1
 
     malformed_values = [] if looks_free_text_column(column) else [value for value in counter if looks_malformed_text_value(value)]
     for value in malformed_values:
@@ -171,9 +185,12 @@ def apply_local_categorical_findings(
         if key not in existing_finding_keys:
             findings.append(finding)
             existing_finding_keys.add(key)
+            malformed_count += 1
 
     semantic_outlier_values: dict[str, str] = {}
     for value in counter:
+        if is_low_ratio_sido_spacing_variant(column, value, counter):
+            continue
         if looks_name_column(column) and looks_non_name_value(value):
             semantic_outlier_values[value] = "non_name_phrase"
         elif (
@@ -205,6 +222,10 @@ def apply_local_categorical_findings(
         if key not in existing_finding_keys:
             findings.append(finding)
             existing_finding_keys.add(key)
+            if detector == "non_name_phrase":
+                non_name_count += 1
+            else:
+                context_free_replacement_count += 1
 
     prefix_pairs = find_truncated_value_pairs(counter) if allows_local_prefix_truncation(column) else []
     institution_pairs = (
@@ -251,14 +272,13 @@ def apply_local_categorical_findings(
         if key not in existing_finding_keys:
             findings.append(finding)
             existing_finding_keys.add(key)
+            truncated_count += 1
 
     return LocalCategoricalFindingCounts(
-        normalization_count=len(normalization_pairs),
-        truncated_count=len(truncated_pairs),
-        malformed_count=len(malformed_values),
-        non_name_count=sum(1 for detector in semantic_outlier_values.values() if detector == "non_name_phrase"),
-        domain_variant_count=len(domain_variant_pairs),
-        context_free_replacement_count=sum(
-            1 for detector in semantic_outlier_values.values() if detector == "context_free_replacement"
-        ),
+        normalization_count=normalization_count,
+        truncated_count=truncated_count,
+        malformed_count=malformed_count,
+        non_name_count=non_name_count,
+        domain_variant_count=domain_variant_count,
+        context_free_replacement_count=context_free_replacement_count,
     )

@@ -2,6 +2,11 @@ from __future__ import annotations
 
 import re
 
+from backend.config.column_rules import (
+    DATE_DAY_OF_MONTH_MIN_COUNT,
+    DATE_DAY_OF_MONTH_MIN_DISTINCT_DAYS,
+    DATE_DAY_OF_MONTH_MIN_RATIO,
+)
 from backend.domain.entities.models import ValidationFinding
 from ..shared.settings import (
     BOOLEAN_ALLOWED_VALUES,
@@ -35,7 +40,7 @@ def _looks_date_domain_column(column) -> bool:
 
 def _is_day_of_month_distribution(values: list[str]) -> bool:
     non_empty_values = [str(value or "").strip() for value in values if str(value or "").strip()]
-    if len(non_empty_values) < 5:
+    if len(non_empty_values) < DATE_DAY_OF_MONTH_MIN_COUNT:
         return False
 
     day_values = [
@@ -43,11 +48,11 @@ def _is_day_of_month_distribution(values: list[str]) -> bool:
         for value in non_empty_values
         if re.fullmatch(r"\d{1,2}", value) and 1 <= int(value) <= 31
     ]
-    if len(day_values) / len(non_empty_values) < 0.8:
+    if len(day_values) / len(non_empty_values) < DATE_DAY_OF_MONTH_MIN_RATIO:
         return False
 
     distinct_days = {int(value) for value in day_values}
-    return len(distinct_days) >= 3
+    return len(distinct_days) >= DATE_DAY_OF_MONTH_MIN_DISTINCT_DAYS
 
 
 def find_invalid_dates(context: ColumnRuleContext) -> list[ValidationFinding]:

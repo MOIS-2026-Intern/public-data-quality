@@ -3,6 +3,16 @@ from __future__ import annotations
 import re
 from collections import Counter
 
+from backend.config.normalization import (
+    COMPACT_VARIANT_DOMINANT_MIN_RATIO,
+    COMPACT_VARIANT_DOMINANT_VALUE_LIMIT,
+    COMPACT_VARIANT_MAX_KEY_LEN,
+    COMPACT_VARIANT_MIN_KEY_LEN,
+    COMPACT_VARIANT_SOURCE_MAX_RATIO,
+    SURFACE_NORMALIZATION_MIN_CANONICAL_LENGTH,
+    SURFACE_NORMALIZATION_TARGET_MIN_COUNT,
+    SURFACE_NORMALIZATION_TARGET_TO_SOURCE_COUNT_RATIO,
+)
 from ..shared.settings import CATEGORICAL_LLM_MIN_REPEAT_COUNT
 from .column import (
     is_public_private_category_value,
@@ -74,7 +84,7 @@ def find_surface_normalization_pairs(counter: Counter[str]) -> list[tuple[str, s
         if not cleaned or is_numeric_like_value(cleaned):
             continue
         canonical = canonical_normalization_key(cleaned)
-        if len(canonical) < 2:
+        if len(canonical) < SURFACE_NORMALIZATION_MIN_CANONICAL_LENGTH:
             continue
         groups.setdefault(canonical, []).append(cleaned)
 
@@ -91,7 +101,10 @@ def find_surface_normalization_pairs(counter: Counter[str]) -> list[tuple[str, s
                 continue
             if counter[source] > CATEGORICAL_LLM_MIN_REPEAT_COUNT:
                 continue
-            if counter[target] < max(3, counter[source] * 3):
+            if counter[target] < max(
+                SURFACE_NORMALIZATION_TARGET_MIN_COUNT,
+                counter[source] * SURFACE_NORMALIZATION_TARGET_TO_SOURCE_COUNT_RATIO,
+            ):
                 continue
             if is_safe_normalization(source, target):
                 pairs.append((source, target))
@@ -141,7 +154,10 @@ def is_near_compact_domain_variant(source: str, target: str) -> bool:
         return False
     if is_numeric_like_value(source_key) or is_numeric_like_value(target_key):
         return False
-    if len(target_key) < 2 or len(target_key) > 10:
+    if (
+        len(target_key) < COMPACT_VARIANT_MIN_KEY_LEN
+        or len(target_key) > COMPACT_VARIANT_MAX_KEY_LEN
+    ):
         return False
     if len(source_key) > len(target_key) + 1:
         return False
@@ -161,8 +177,13 @@ def find_compact_domain_variant_pairs(counter: Counter[str]) -> list[tuple[str, 
 
     dominant_values = [
         value
-        for value, count in counter.most_common(5)
-        if count / total >= 0.2 and 2 <= len(canonical_normalization_key(value)) <= 10
+        for value, count in counter.most_common(COMPACT_VARIANT_DOMINANT_VALUE_LIMIT)
+        if (
+            count / total >= COMPACT_VARIANT_DOMINANT_MIN_RATIO
+            and COMPACT_VARIANT_MIN_KEY_LEN
+            <= len(canonical_normalization_key(value))
+            <= COMPACT_VARIANT_MAX_KEY_LEN
+        )
     ]
     if not dominant_values:
         return []
@@ -170,7 +191,7 @@ def find_compact_domain_variant_pairs(counter: Counter[str]) -> list[tuple[str, 
     pairs: list[tuple[str, str]] = []
     for source, source_count in counter.items():
         source_ratio = source_count / total
-        if source_ratio >= 0.2:
+        if source_ratio >= COMPACT_VARIANT_SOURCE_MAX_RATIO:
             continue
         for target in dominant_values:
             if source == target or source_count >= counter[target]:

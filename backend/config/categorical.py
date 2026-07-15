@@ -4,8 +4,52 @@ CATEGORICAL_LLM_MIN_REPEAT_COUNT = 2
 CATEGORICAL_LLM_MIN_DISTINCT = 2
 CATEGORICAL_LLM_MAX_VALUES = 60
 CATEGORICAL_LLM_CONFIDENCE_THRESHOLD = 0.9
+CATEGORICAL_LOW_RATIO_NORMAL_VALUE_MAX_RATIO = 0.05
+CATEGORICAL_COMPACT_SET_MIN_TOTAL = 10
+CATEGORICAL_COMPACT_SET_MAX_DISTINCT = 80
+CATEGORICAL_COMPACT_SET_MAX_DISTINCT_RATIO = 0.1
+CATEGORICAL_COMPACT_SET_MIN_TOP_RATIO = 0.2
 ADDRESS_DETAIL_LLM_CONFIDENCE_THRESHOLD = 0.95
 ADDRESS_DETAIL_LLM_MAX_CANDIDATES = 40
+SIDO_COLUMN_NAMES = {"시도", "시도명", "광역시도", "광역시도명"}
+KOREAN_SIDO_VARIANTS = {
+    "서울",
+    "부산",
+    "대구",
+    "인천",
+    "광주",
+    "대전",
+    "울산",
+    "세종",
+    "세종시",
+    "경기",
+    "강원",
+    "충북",
+    "충남",
+    "전북",
+    "전남",
+    "경북",
+    "경남",
+    "제주",
+    "제주도",
+    "서울특별시",
+    "부산광역시",
+    "대구광역시",
+    "인천광역시",
+    "광주광역시",
+    "대전광역시",
+    "울산광역시",
+    "세종특별자치시",
+    "경기도",
+    "강원도",
+    "충청북도",
+    "충청남도",
+    "전라북도",
+    "전라남도",
+    "경상북도",
+    "경상남도",
+    "제주특별자치도",
+}
 
 CATEGORICAL_NAME_TOKENS = (
     "구분",
@@ -78,6 +122,39 @@ ROW_CONTEXT_SIGNAL_SCORES = {
     "default": {ROW_CONTEXT_UNIQUE_VALUE_COUNT: 30, ROW_CONTEXT_RARE_VALUE_COUNT: 20},
 }
 ROW_CONTEXT_EARLY_SAMPLE_REASON = "early sample row"
+ROW_CONTEXT_MANUAL_REVIEW_MIN_CONFIDENCE = 0.50
+ROW_CONTEXT_UNIQUENESS_MARKERS = (
+    "유일한 값",
+    "고유한 값",
+    "희귀",
+    "드문 값",
+    "흔하지 않은",
+    "특이",
+    "unique",
+    "rare",
+    "unusual",
+)
+ROW_CONTEXT_STYLE_MARKERS = (
+    "띄어쓰기",
+    "공백",
+    "표기",
+    "spacing",
+    "style",
+)
+ROW_CONTEXT_SUM_MISMATCH_MARKERS = (
+    "합계",
+    "합산",
+    "세부 항목",
+    "세부항목",
+    "일치하지",
+    "불일치",
+    "합이",
+    "sum",
+)
+ROW_CONTEXT_GENERIC_VALUE_REVIEW_PATTERN = (
+    r"^'?(?P<column>.+?)'?\s+값이\s+'?(?P<value>.+?)'?\s*"
+    r"(?:인\s+경우\s+)?(?:검토|확인(?:\s*필요)?)\.?$"
+)
 
 SHORT_KOREAN_PREFIX_LEN = 2
 MIN_TRUNCATED_PREFIX_LEN = 3

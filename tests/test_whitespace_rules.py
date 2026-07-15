@@ -80,3 +80,16 @@ def test_whitespace_rule_describes_column_name_issue() -> None:
     assert len(findings) == 1
     assert findings[0].rule_id == "whitespace_manual_review"
     assert findings[0].message == "컬럼명에서 문자열 맨 앞에 공백이 의심됩니다."
+
+
+def test_whitespace_rule_describes_multiple_minor_gaps() -> None:
+    rows = [{"가격정보": "A  B  C"}]
+
+    findings = validate_column(_text_column(values=["A  B  C"]), _dataset_meta(), rows)
+
+    assert len(findings) == 1
+    assert findings[0].rule_id == "whitespace_manual_review"
+    assert findings[0].message == (
+        "'A'과 'B' 사이에 공백 이상이 의심됩니다. "
+        "'B'과 'C' 사이에 공백 이상이 의심됩니다."
+    )
