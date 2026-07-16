@@ -208,6 +208,7 @@ class AsyncAnalysisJobService:
             job_id=job_id,
             payload=payload,
             items=items_payload,
+            job_items=job.items,
             artifact_store=artifact_store,
         )
         batch_result_artifact = artifact_store.put_json(

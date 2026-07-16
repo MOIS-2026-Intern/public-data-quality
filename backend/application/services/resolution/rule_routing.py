@@ -7,6 +7,7 @@ from backend.config.column_rules import (
     ROUTING_NON_UNIQUE_NAME_TOKENS,
     ROUTING_TAG_TOKENS,
 )
+from backend.config.llm import LLM_ROUTING_LOCAL_CONFIDENCE
 from backend.config.validation import TAG_RULE_MAP, VALIDATION_CRITERIA
 from backend.domain.entities.models import ColumnProfile
 from backend.domain.policies.columns import column_format_kind, looks_free_text_column
@@ -72,6 +73,8 @@ def apply_rule_fallback(column: ColumnProfile) -> ColumnProfile:
         rule_ids.extend(TAG_RULE_MAP.get(tag, []))
     column.assigned_rules = _unique_strings(rule_ids)
     column.format_kind = column_format_kind(column)
+    if column.assigned_rules or column.semantic_tags == ["free_text"]:
+        column.routing_confidence = max(column.routing_confidence, LLM_ROUTING_LOCAL_CONFIDENCE)
     return column
 
 

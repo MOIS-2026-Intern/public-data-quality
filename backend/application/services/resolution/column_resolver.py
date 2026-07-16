@@ -16,6 +16,92 @@ from backend.config.validation import TAG_RULE_MAP, VALIDATION_CRITERIA
 from backend.domain.entities.models import ColumnProfile
 from backend.domain.policies.relationships.common import is_non_unique_local_admin_reference_pair
 from .confidence import coerce_resolution_confidence
+from .prompt_payload import compact_column_payload
+
+
+_RELATIONSHIP_RULE_IDS = {
+    "time_sequence_consistency",
+    "precedence_accuracy",
+    "logical_consistency",
+    "calculation_formula",
+    "reference_relation",
+}
+_RELATIONSHIP_TAGS = {
+    "address",
+    "amount",
+    "boolean",
+    "code",
+    "coordinate_pair",
+    "count",
+    "date",
+    "enum",
+    "geo_lat",
+    "geo_lon",
+    "identifier",
+    "numeric",
+    "quantity",
+    "rate",
+}
+_RELATIONSHIP_LABEL_TAGS = {"name"}
+_REFERENCE_DRIVER_TAGS = {"code", "coordinate_pair", "enum", "identifier"}
+_RELATIONSHIP_NAME_TOKENS = (
+    "주소",
+    "지역",
+    "시도",
+    "일자",
+    "날짜",
+    "시작",
+    "종료",
+    "합계",
+    "총",
+    "계",
+    "건수",
+    "수량",
+    "금액",
+    "코드",
+    "번호",
+    "여부",
+    "위도",
+    "경도",
+)
+_RELATIONSHIP_LABEL_NAME_TOKENS = ("명", "명칭", "이름")
+
+
+def _relationship_target_columns(columns: list[ColumnProfile]) -> list[ColumnProfile]:
+    selected = []
+    labels = []
+    has_reference_driver = False
+    for column in columns:
+        name = f"{column.raw_name} {column.normalized_name}"
+        if _RELATIONSHIP_RULE_IDS.intersection(column.assigned_rules):
+            selected.append(column)
+            if _REFERENCE_DRIVER_TAGS.intersection(column.semantic_tags) or any(token in name for token in ("코드", "번호")):
+                has_reference_driver = True
+            continue
+        if _RELATIONSHIP_TAGS.intersection(column.semantic_tags):
+            selected.append(column)
+            if _REFERENCE_DRIVER_TAGS.intersection(column.semantic_tags):
+                has_reference_driver = True
+            continue
+        if any(token in name for token in _RELATIONSHIP_NAME_TOKENS):
+            selected.append(column)
+            if any(token in name for token in ("코드", "번호", "구분", "분류", "유형")):
+                has_reference_driver = True
+            continue
+        if _RELATIONSHIP_LABEL_TAGS.intersection(column.semantic_tags) or any(
+            token in name for token in _RELATIONSHIP_LABEL_NAME_TOKENS
+        ):
+            labels.append(column)
+    if has_reference_driver:
+        selected.extend(labels)
+    deduped: list[ColumnProfile] = []
+    seen: set[str] = set()
+    for column in selected:
+        if column.raw_name in seen:
+            continue
+        seen.add(column.raw_name)
+        deduped.append(column)
+    return deduped
 
 
 class LLMColumnResolver:
@@ -167,7 +253,9 @@ class LLMColumnResolver:
             }
         )
         all_columns = [candidate.raw_name for candidate in data.columns]
-        payload = self._invoke_json_payload(
+        fast_payload = self._invoke_json_payload_once(
+            llm,
+            "fast",
             schema_routing_batch_prompt(
                 dataset_name=dataset_meta.dataset_name,
                 provider_name=dataset_meta.provider_name,
@@ -175,32 +263,60 @@ class LLMColumnResolver:
                 data_format=dataset_meta.data_format,
                 all_columns=all_columns,
                 columns=[
-                    {
-                        "raw_name": column.raw_name,
-                        "normalized_name": column.normalized_name,
-                        "source": column.source,
-                        "inferred_type": column.inferred_primitive_type,
-                        "sample_values": column.sample_values,
-                        "top_values": column.top_values,
-                    }
+                    compact_column_payload(column, include_routing_fields=True)
                     for column in columns
                 ],
                 allowed_tags=allowed_tags,
                 allowed_rules=allowed_rules,
             ),
             system_prompt=SCHEMA_ROUTING_SYSTEM_PROMPT,
-            difficult=self._routing_batch_needs_strong,
         )
-        if payload is None:
-            return {}
         allowed_raw_names = {column.raw_name for column in columns}
-        return self._sanitize_routing_payloads(payload, allowed_raw_names)
+        resolved = self._sanitize_routing_payloads(fast_payload, allowed_raw_names) if fast_payload is not None else {}
+        strong_columns = [
+            column
+            for column in columns
+            if column.raw_name not in resolved or self._routing_needs_strong(resolved[column.raw_name])
+        ]
+        if not strong_columns or not self._strong_enabled:
+            return resolved
+
+        strong_payload = self._invoke_json_payload_once(
+            self._strong_llm,
+            "strong",
+            schema_routing_batch_prompt(
+                dataset_name=dataset_meta.dataset_name,
+                provider_name=dataset_meta.provider_name,
+                keywords=dataset_meta.keywords,
+                data_format=dataset_meta.data_format,
+                all_columns=all_columns,
+                columns=[
+                    compact_column_payload(column, include_routing_fields=True)
+                    for column in strong_columns
+                ],
+                allowed_tags=allowed_tags,
+                allowed_rules=allowed_rules,
+            ),
+            system_prompt=SCHEMA_ROUTING_SYSTEM_PROMPT,
+        )
+        if strong_payload is None:
+            return resolved
+
+        strong_results = self._sanitize_routing_payloads(strong_payload, {column.raw_name for column in strong_columns})
+        for raw_name, payload in strong_results.items():
+            payload["_llm_escalated"] = True
+            if raw_name in resolved:
+                payload["_llm_fast_confidence"] = resolved[raw_name].get("confidence")
+        resolved.update(strong_results)
+        return resolved
 
     @staticmethod
     def _sanitize_routing_payloads(
-        payload: dict[str, Any],
+        payload: dict[str, Any] | None,
         allowed_raw_names: set[str],
     ) -> dict[str, dict[str, Any]]:
+        if payload is None:
+            return {}
         columns = payload.get("columns")
         if not isinstance(columns, list):
             return {}
@@ -212,12 +328,20 @@ class LLMColumnResolver:
             raw_name = str(item.get("raw_name") or "").strip()
             if not raw_name or raw_name not in allowed_raw_names or raw_name in sanitized:
                 continue
+            item["_llm_model"] = payload.get("_llm_model", "")
+            item["_llm_stage"] = payload.get("_llm_stage", "")
+            item["_llm_escalated"] = bool(payload.get("_llm_escalated"))
             sanitized[raw_name] = item
         return sanitized
 
     def resolve_relationships(self, state: PipelineState, columns: list[ColumnProfile]) -> list[dict[str, Any]]:
         llm = self._client()
         if llm is None:
+            return []
+        target_columns = _relationship_target_columns(columns)
+        if len(target_columns) < 2:
+            self.last_error = ""
+            self.last_response_preview = ""
             return []
 
         dataset_meta = require_dataset_meta(state)
@@ -229,16 +353,8 @@ class LLMColumnResolver:
             "reference_relation",
         ]
         column_payload = [
-            {
-                "raw_name": column.raw_name,
-                "normalized_name": column.normalized_name,
-                "semantic_tags": column.semantic_tags,
-                "assigned_rules": column.assigned_rules,
-                "inferred_type": column.inferred_primitive_type,
-                "sample_values": column.sample_values,
-                "top_values": column.top_values,
-            }
-            for column in columns
+            compact_column_payload(column, include_semantic_fields=True)
+            for column in target_columns
         ]
         payload = self._invoke_json_payload(
             relationship_routing_prompt(
@@ -255,7 +371,7 @@ class LLMColumnResolver:
         if payload is None:
             return []
 
-        by_name = {column.raw_name: column for column in columns}
+        by_name = {column.raw_name: column for column in target_columns}
         raw_names = set(by_name)
         candidates = payload.get("relationship_candidates")
         if not isinstance(candidates, list):

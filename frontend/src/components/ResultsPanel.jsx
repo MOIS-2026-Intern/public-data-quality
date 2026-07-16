@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { displayValue } from "./common";
-import { getReportDownloadUrl, ResultContent } from "./ResultContent";
+import { getColumnErrorReportDownloadUrl, getReportDownloadUrl, ResultContent } from "./ResultContent";
 
 function LoadingProgress({ progress }) {
   if (!progress?.visible) {
@@ -53,15 +53,23 @@ function filteredBatchEntries(items, searchQuery) {
 
 function BatchReportActions({ result }) {
   const downloadUrl = getReportDownloadUrl(result);
-  if (!downloadUrl) {
+  const columnErrorDownloadUrl = getColumnErrorReportDownloadUrl(result);
+  if (!downloadUrl && !columnErrorDownloadUrl) {
     return null;
   }
 
   return (
     <div className="report-actions">
-      <a className="download-report-button" href={downloadUrl}>
-        전체 오류 리포트 다운로드
-      </a>
+      {downloadUrl ? (
+        <a className="download-report-button" href={downloadUrl}>
+          전체 오류 리포트 다운로드
+        </a>
+      ) : null}
+      {columnErrorDownloadUrl ? (
+        <a className="download-report-button" href={columnErrorDownloadUrl}>
+          컬럼별 데이터 오류 다운로드
+        </a>
+      ) : null}
     </div>
   );
 }

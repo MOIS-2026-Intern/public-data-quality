@@ -171,8 +171,8 @@ def _request_options(payload: dict[str, Any]) -> PipelineExecutionRequest:
             f"Bearer {openai_api_key}".encode("latin-1")
         except UnicodeEncodeError as exc:
             raise ValueError(
-                "OpenAI API Key에 한글 등 HTTP 헤더로 보낼 수 없는 문자가 포함되어 있습니다. "
-                "sk-로 시작하는 API Key를 그대로 입력하세요."
+                "BizRouter API Key에 한글 등 HTTP 헤더로 보낼 수 없는 문자가 포함되어 있습니다. "
+                "발급받은 키를 그대로 입력하세요."
             ) from exc
 
     return PipelineExecutionRequest(

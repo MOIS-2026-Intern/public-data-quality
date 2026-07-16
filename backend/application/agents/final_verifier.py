@@ -21,9 +21,19 @@ from backend.application.services.verification.final_finding_verifier import (
     _is_protected_deterministic_issue,
     _keeps_issue,
     _occurrence_count,
+    _skip_llm_final_verification,
     _verification_decisions,
 )
 from backend.domain.entities.models import ValidationFinding
+
+
+def _apply_protected_deterministic_findings(findings: list[ValidationFinding]) -> list[ValidationFinding]:
+    return [
+        _apply_protected_final_verification(finding)
+        if finding.finding_type == "issue" and finding.row_indexes and _is_protected_deterministic_issue(finding)
+        else finding
+        for finding in findings
+    ]
 
 
 class FinalFindingVerificationAgent(BaseAgent):
@@ -44,6 +54,11 @@ class FinalFindingVerificationAgent(BaseAgent):
             for index, finding in enumerate(findings)
             if finding.finding_type == "issue" and finding.row_indexes
         ]
+        llm_issue_pairs = [
+            (index, finding)
+            for index, finding in issue_pairs
+            if not _skip_llm_final_verification(finding)
+        ]
 
         if not use_llm:
             traces.append(
@@ -55,10 +70,19 @@ class FinalFindingVerificationAgent(BaseAgent):
             return update_pipeline_result(state, findings=findings, agent_traces=traces)
 
         rows = pipeline_rows(state)
-        candidates = _finding_candidates(issue_pairs, rows)
+        candidates = _finding_candidates(llm_issue_pairs, rows)
         if not candidates:
-            traces.append(self.trace(action="final_verify_findings", detail="issue_findings=0"))
-            return update_pipeline_result(state, findings=findings, agent_traces=traces)
+            traces.append(
+                self.trace(
+                    action="final_verify_findings",
+                    detail=f"issue_findings={len(issue_pairs)}, llm_candidates=0",
+                )
+            )
+            return update_pipeline_result(
+                state,
+                findings=_apply_protected_deterministic_findings(findings),
+                agent_traces=traces,
+            )
 
         grouped_candidates = _group_candidates(candidates)
         limited_candidates = grouped_candidates[:MAX_FINAL_VERIFICATION_CANDIDATES]
@@ -86,7 +110,7 @@ class FinalFindingVerificationAgent(BaseAgent):
                 self.trace(
                     action="final_verify_findings",
                     detail=(
-                        f"llm_no_result; issue_findings={len(issue_pairs)}, "
+                        f"llm_no_result; issue_findings={len(issue_pairs)}, llm_candidates={len(candidates)}, "
                         f"model={self.verifier.last_model_name}, error={self.verifier.last_error}, "
                         f"preview={self.verifier.last_response_preview}"
                     ),
@@ -131,6 +155,7 @@ class FinalFindingVerificationAgent(BaseAgent):
                 action="final_verify_findings",
                 detail=(
                     f"candidates={len(candidates)}, grouped_candidates={len(grouped_candidates)}, "
+                    f"skipped_deterministic={len(issue_pairs) - len(llm_issue_pairs)}, "
                     f"verified={len(verified_findings)}, "
                     f"suppressed_occurrences={suppressed}, model={self.verifier.last_model_name}"
                 ),

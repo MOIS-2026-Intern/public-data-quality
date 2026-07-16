@@ -18,6 +18,7 @@ def _dependencies() -> WebAdapterDependencies:
         validation_output_dir=lambda base_dir=None: Path("/tmp"),
         attach_report_paths=lambda **kwargs: kwargs["response"],
         write_batch_error_report=lambda **kwargs: Path("/tmp/batch_report.xlsx"),
+        write_batch_column_error_report=lambda **kwargs: Path("/tmp/batch_column_report.xlsx"),
         public_download_name=lambda filename, default_suffix=".xlsx": filename,
         prepare_saved_dataset=lambda *args, **kwargs: [],
         prepare_url_datasets=lambda *args, **kwargs: [],
@@ -54,10 +55,14 @@ def test_analyze_prepared_datasets_wraps_single_success() -> None:
     assert payload["results"][0]["filename"] == "sample.csv"
 
 
-def test_analyze_prepared_datasets_generates_batch_report_path() -> None:
+def test_analyze_prepared_datasets_generates_batch_report_paths(tmp_path) -> None:
+    first_path = tmp_path / "a.csv"
+    second_path = tmp_path / "b.csv"
+    first_path.write_text("value\n1\n", encoding="utf-8")
+    second_path.write_text("value\n2\n", encoding="utf-8")
     datasets = [
-        PreparedDataset(display_name="a.csv", path=Path("/tmp/a.csv"), source_type="file", response_type="csv"),
-        PreparedDataset(display_name="b.csv", path=Path("/tmp/b.csv"), source_type="file", response_type="csv"),
+        PreparedDataset(display_name="a.csv", path=first_path, source_type="file", response_type="csv"),
+        PreparedDataset(display_name="b.csv", path=second_path, source_type="file", response_type="csv"),
     ]
 
     original = execution._analyze_dataset_item
@@ -88,6 +93,7 @@ def test_analyze_prepared_datasets_generates_batch_report_path() -> None:
     assert status_code == 200
     assert payload["batch"] is True
     assert payload["summary"]["error_report_xlsx"] == "batch_report.xlsx"
+    assert payload["summary"]["column_error_report_xlsx"] == "batch_column_report.xlsx"
 
 
 def test_analyze_prepared_datasets_wraps_single_failure() -> None:
@@ -191,3 +197,4 @@ def test_stream_analysis_events_emits_batch_report_path_for_batch(monkeypatch, t
     assert events[-1]["type"] == "final"
     assert events[-1]["payload"]["batch"] is True
     assert events[-1]["payload"]["summary"]["error_report_xlsx"] == "batch_report.xlsx"
+    assert events[-1]["payload"]["summary"]["column_error_report_xlsx"] == "batch_column_report.xlsx"

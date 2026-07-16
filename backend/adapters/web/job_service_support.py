@@ -8,15 +8,16 @@ from uuid import uuid4
 
 from backend.application.dto import AnalysisJob, AnalysisJobItem, ArtifactRef, PreparedDataset, job_timestamp
 from backend.config.reporting import REPORTS_DIR_NAME, RESULTS_DIR_NAME
+from backend.infrastructure.io.loaders.loading import iter_uploaded_rows
 
 
 def build_job_items(
     *,
     job_id: str,
-        prepared_datasets: list[PreparedDataset],
-        artifact_store,
-        repository,
-        now: str,
+    prepared_datasets: list[PreparedDataset],
+    artifact_store,
+    repository,
+    now: str,
 ) -> list[AnalysisJobItem]:
     items: list[AnalysisJobItem] = []
     for index, dataset in enumerate(prepared_datasets, start=1):
@@ -125,6 +126,7 @@ def persist_batch_report(
     job_id: str,
     payload: dict[str, Any],
     items: list[dict[str, Any]],
+    job_items: list[AnalysisJobItem],
     artifact_store,
 ) -> ArtifactRef | None:
     if not payload.get("batch"):
@@ -146,6 +148,26 @@ def persist_batch_report(
         )
         payload["summary"]["error_report_xlsx"] = batch_report_artifact.key
         payload["summary"]["error_report_download_path"] = artifact_download_path(batch_report_artifact.key)
+        column_report_entries = _job_batch_column_report_entries(
+            items=items,
+            job_items=job_items,
+            artifact_store=artifact_store,
+            tmp_dir=Path(tmp_dir),
+        )
+        if column_report_entries:
+            column_report_path = dependencies.write_batch_column_error_report(
+                entries=column_report_entries,
+                output_dir=output_dir,
+            )
+            column_report_artifact = artifact_store.put_file(
+                column_report_path,
+                key=f"jobs/{job_id}/results/{column_report_path.name}",
+                filename=column_report_path.name,
+            )
+            payload["summary"]["column_error_report_xlsx"] = column_report_artifact.key
+            payload["summary"]["column_error_report_download_path"] = artifact_download_path(
+                column_report_artifact.key
+            )
         return batch_report_artifact
 
 
@@ -189,6 +211,42 @@ def aggregate_job(job: AnalysisJob) -> AnalysisJob:
 
 def artifact_download_path(key: str) -> str:
     return f"/api/jobs/artifacts/download?key={quote(key, safe='')}"
+
+
+def _job_batch_column_report_entries(
+    *,
+    items: list[dict[str, Any]],
+    job_items: list[AnalysisJobItem],
+    artifact_store,
+    tmp_dir: Path,
+) -> list[dict[str, Any]]:
+    entries: list[dict[str, Any]] = []
+    source_dir = tmp_dir / "column_report_inputs"
+    for item, job_item in zip(items, job_items):
+        result = item.get("result")
+        if not item.get("ok") or not isinstance(result, dict) or job_item.source_artifact is None:
+            continue
+        normalized_result = result
+        if not result.get("summary", {}).get("dataset_name"):
+            normalized_result = {
+                **result,
+                "summary": {
+                    **result.get("summary", {}),
+                    "dataset_name": job_item.display_name,
+                },
+            }
+        materialized_path = artifact_store.materialize(
+            job_item.source_artifact.key,
+            target_dir=source_dir / f"{job_item.index:04d}",
+            filename=job_item.display_name,
+        )
+        entries.append(
+            {
+                "result": normalized_result,
+                "validation_rows": list(iter_uploaded_rows(materialized_path)),
+            }
+        )
+    return entries
 
 
 def job_repository(dependencies):

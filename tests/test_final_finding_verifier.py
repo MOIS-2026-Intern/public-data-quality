@@ -257,7 +257,7 @@ def test_final_finding_verifier_groups_duplicate_candidates() -> None:
             criterion_name="date_domain",
             message="날짜 형식이 올바르지 않습니다.",
             row_indexes=[1],
-            evidence=["detector:test"],
+            evidence=["detector:llm_categorical", "stage:strong", "confidence:0.95"],
         ),
         build_finding(
             column_name="기준일자",
@@ -266,7 +266,7 @@ def test_final_finding_verifier_groups_duplicate_candidates() -> None:
             criterion_name="date_domain",
             message="날짜 형식이 올바르지 않습니다.",
             row_indexes=[2],
-            evidence=["detector:test"],
+            evidence=["detector:llm_categorical", "stage:strong", "confidence:0.95"],
         ),
     ]
 

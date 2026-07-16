@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from typing import Any
 
 from openpyxl import Workbook
 
 from backend.config.reporting import (
+    BATCH_COLUMN_ERROR_REPORT_FILENAME,
     BATCH_REPORT_FILENAME,
     REPORTS_DIR_NAME,
 )
@@ -15,6 +17,7 @@ from .workbook_support import (
     finding_current_value as _finding_current_value,
     finding_row_indexes as _finding_row_indexes,
     finding_validation_area as _finding_validation_area,
+    issue_details_by_cell as _issue_details_by_cell,
     issue_cells_by_position as _issue_cells_by_position,
     issue_messages_by_cell as _issue_messages_by_cell,
     report_filename as _report_filename,
@@ -24,6 +27,8 @@ from .workbook_support import (
     style_header_row as _style_header_row,
 )
 from .artifacts import unique_artifact_path
+
+_SHEET_TITLE_UNSAFE_RE = re.compile(r"[\[\]:*?/\\]+")
 
 
 def write_error_report(
@@ -43,6 +48,7 @@ def write_error_report(
     summary_sheet.title = "요약"
     _write_summary_sheet(summary_sheet, result, validation_rows)
     _write_data_sheet(workbook.create_sheet("전체 데이터 오류 표시"), result, validation_rows)
+    _write_column_error_sheet(workbook.create_sheet("컬럼별 데이터 오류 표시"), result, validation_rows)
     _write_findings_sheet(workbook.create_sheet("오류 상세"), result, validation_rows)
     _write_manual_review_sheet(workbook.create_sheet("수동 검토 상세"), result, validation_rows)
 
@@ -69,6 +75,48 @@ def write_batch_error_report(
 
     workbook.save(report_path)
     return report_path
+
+
+def write_batch_column_error_report(
+    *,
+    entries: list[dict[str, Any]],
+    output_dir: Path,
+) -> Path:
+    reports_dir = output_dir / REPORTS_DIR_NAME
+    reports_dir.mkdir(parents=True, exist_ok=True)
+
+    report_path = unique_artifact_path(reports_dir, BATCH_COLUMN_ERROR_REPORT_FILENAME)
+    workbook = Workbook()
+    successful_entries = [entry for entry in entries if isinstance(entry.get("result"), dict)]
+    if not successful_entries:
+        workbook.active.title = "데이터"
+        workbook.save(report_path)
+        return report_path
+
+    used_titles: set[str] = set()
+    first_entry = successful_entries[0]
+    first_sheet = workbook.active
+    first_sheet.title = _unique_sheet_title(_result_dataset_name(first_entry["result"]), used_titles)
+    _write_column_error_sheet(
+        first_sheet,
+        first_entry["result"],
+        list(first_entry.get("validation_rows") or []),
+    )
+
+    for entry in successful_entries[1:]:
+        sheet = workbook.create_sheet(
+            _unique_sheet_title(_result_dataset_name(entry["result"]), used_titles)
+        )
+        _write_column_error_sheet(
+            sheet,
+            entry["result"],
+            list(entry.get("validation_rows") or []),
+        )
+
+    workbook.save(report_path)
+    return report_path
+
+
 def _write_summary_sheet(sheet, result: dict[str, Any], validation_rows: list[dict[str, str]]) -> None:
     summary = result.get("summary", {})
     issue_cells = _issue_cells_by_position(result)
@@ -111,6 +159,44 @@ def _write_data_sheet(sheet, result: dict[str, Any], validation_rows: list[dict[
         add_issue_comment(sheet, row_index=excel_row, column_index=excel_column, messages=messages)
 
     _auto_width(sheet, max_width=42)
+
+
+def _write_column_error_sheet(sheet, result: dict[str, Any], validation_rows: list[dict[str, str]]) -> None:
+    headers = _result_headers(result, validation_rows)
+    display_headers = ["row_index", *headers, "오류 여부", "오류 내용"]
+
+    sheet.append(display_headers)
+    _style_header_row(sheet, 1)
+    sheet.freeze_panes = "A2"
+
+    issue_map = _issue_details_by_cell(result)
+    row_issue_entries: dict[int, list[tuple[str, str]]] = {}
+    for (row_index, column_name), details in issue_map.items():
+        filtered_details = [detail for detail in details if detail]
+        if not filtered_details:
+            continue
+        row_issue_entries.setdefault(row_index, []).extend((column_name, detail) for detail in filtered_details)
+
+    max_finding_row = max(row_issue_entries, default=0)
+    row_count = max(len(validation_rows), max_finding_row)
+
+    for row_index in range(1, row_count + 1):
+        source_row = validation_rows[row_index - 1] if row_index <= len(validation_rows) else {}
+        row_entries = row_issue_entries.get(row_index, [])
+        row_details = [
+            detail if len(row_entries) == 1 or not column_name else f"{column_name}: {detail}"
+            for column_name, detail in row_entries
+        ]
+        sheet.append(
+            [
+                row_index,
+                *[source_row.get(header, "") for header in headers],
+                "오류" if row_details else "",
+                " / ".join(row_details),
+            ]
+        )
+
+    _auto_width(sheet, max_width=52)
 
 
 def _write_findings_sheet(sheet, result: dict[str, Any], validation_rows: list[dict[str, str]]) -> None:
@@ -295,6 +381,23 @@ def _row_current_value(
     if 0 < row_index <= len(validation_rows):
         return str(validation_rows[row_index - 1].get(column_name, ""))
     return ""
+
+
+def _unique_sheet_title(title: str, used_titles: set[str]) -> str:
+    sanitized = _SHEET_TITLE_UNSAFE_RE.sub("_", str(title or "")).strip(" '") or "dataset"
+    candidate = sanitized[:31] or "dataset"
+    if candidate not in used_titles:
+        used_titles.add(candidate)
+        return candidate
+
+    suffix = 2
+    while True:
+        suffix_text = f"_{suffix}"
+        trimmed = (sanitized[: 31 - len(suffix_text)] or "dataset") + suffix_text
+        if trimmed not in used_titles:
+            used_titles.add(trimmed)
+            return trimmed
+        suffix += 1
 
 
 def _successful_batch_results(items: list[dict[str, Any]]) -> list[dict[str, Any]]:

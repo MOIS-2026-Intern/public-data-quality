@@ -19,6 +19,12 @@ if TYPE_CHECKING:
     from backend.application.services.resolution.column_resolver import LLMColumnResolver
 
 
+def _needs_llm_route(column: ColumnProfile) -> bool:
+    if column.semantic_tags == ["free_text"]:
+        return False
+    return not bool(column.assigned_rules)
+
+
 class LLMRoutingAgent(BaseAgent):
     name = "rule_router"
 
@@ -85,11 +91,12 @@ class LLMRoutingAgent(BaseAgent):
             and self.column_resolver is not None
             and self.column_resolver.enabled
         )
-        resolved_payloads = self.column_resolver.resolve_many(state, data.columns) if use_llm else {}
+        fallback_columns = [apply_rule_fallback(column) for column in data.columns]
+        llm_targets = [column for column in fallback_columns if use_llm and _needs_llm_route(column)]
+        resolved_payloads = self.column_resolver.resolve_many(state, llm_targets) if llm_targets else {}
         relationship_candidates: list[dict[str, Any]] | None = None
 
-        for column in data.columns:
-            column = apply_rule_fallback(column)
+        for column in fallback_columns:
             route_source = "rule_fallback"
             llm_error = ""
             llm_model = ""
@@ -102,7 +109,7 @@ class LLMRoutingAgent(BaseAgent):
                 llm_model = str(payload.get("_llm_model", ""))
                 llm_stage = str(payload.get("_llm_stage", ""))
                 llm_escalated = str(payload.get("_llm_escalated", ""))
-            elif use_llm:
+            elif use_llm and _needs_llm_route(column):
                 llm_error = self.column_resolver.last_error
                 llm_model = getattr(self.column_resolver, "last_model_name", "")
                 llm_stage = getattr(self.column_resolver, "last_stage", "")

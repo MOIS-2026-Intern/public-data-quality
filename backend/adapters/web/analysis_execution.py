@@ -64,6 +64,7 @@ def analyze_prepared_datasets(
             _analysis_payload(items, summary=summary),
             items=items,
             dependencies=resolved_dependencies,
+            prepared_datasets=prepared_datasets,
         ),
         status_code,
     )
@@ -143,7 +144,11 @@ def stream_analysis_events(
             current=total_files,
             total=total_files,
             message="분석 완료",
-            payload=_final_payload(items, dependencies=resolved_dependencies),
+            payload=_final_payload(
+                items,
+                prepared_datasets=prepared_datasets,
+                dependencies=resolved_dependencies,
+            ),
         )
     finally:
         cleanup()

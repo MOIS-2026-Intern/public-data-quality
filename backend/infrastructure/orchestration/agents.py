@@ -24,6 +24,14 @@ from backend.infrastructure.io.dataset_gateway import FilesystemDatasetGateway
 from backend.infrastructure.llm import ChatLLMClient
 
 
+def _first_env(*names: str) -> str | None:
+    for name in names:
+        value = os.getenv(name)
+        if value:
+            return value
+    return None
+
+
 @dataclass(frozen=True)
 class PipelineAgents:
     dataset_gateway: FilesystemDatasetGateway
@@ -39,14 +47,24 @@ def _fast_model_name(
     *,
     request: PipelineExecutionRequest,
 ) -> str:
-    return request.llm_fast_model or os.getenv("OPENAI_FAST_MODEL") or os.getenv("OPENAI_MODEL") or LLM_FAST_MODEL
+    return (
+        request.llm_fast_model
+        or _first_env("BIZROUTER_FAST_MODEL", "OPENAI_FAST_MODEL", "BIZROUTER_MODEL", "OPENAI_MODEL")
+        or LLM_FAST_MODEL
+    )
 
 
 def _strong_model_name(
     *,
     request: PipelineExecutionRequest,
 ) -> str:
-    return request.llm_strong_model or os.getenv("OPENAI_STRONG_MODEL") or request.llm_model or LLM_STRONG_MODEL
+    return (
+        request.llm_strong_model
+        or _first_env("BIZROUTER_STRONG_MODEL", "OPENAI_STRONG_MODEL")
+        or request.llm_model
+        or _first_env("BIZROUTER_MODEL", "OPENAI_MODEL")
+        or LLM_STRONG_MODEL
+    )
 
 
 def build_agents(request: PipelineExecutionRequest) -> PipelineAgents:

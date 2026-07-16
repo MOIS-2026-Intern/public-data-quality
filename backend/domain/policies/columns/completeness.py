@@ -323,7 +323,7 @@ def _normalize_column_name(value: str) -> str:
 
 def _looks_sigungu_column(context: ColumnRuleContext) -> bool:
     name = _normalize_column_name(f"{context.column.raw_name}{context.column.normalized_name}")
-    return "시군구" in name
+    return "시군구" in name or "시군" in name
 
 
 def _find_sido_column_name(context: ColumnRuleContext) -> str | None:

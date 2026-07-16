@@ -191,12 +191,12 @@ export function ControlPanel({ form, loading, error, onSubmit }) {
         <div className="control-section model-section">
           <div className="control-section-title">LLM 설정</div>
           <label>
-            OpenAI API Key
+            BizRouter API Key
             <input
               type="password"
               value={values.openAiApiKey}
               onChange={(event) => actions.setOpenAiApiKey(event.target.value)}
-              placeholder="sk-..."
+              placeholder="sk-br-v1-..."
               autoComplete="off"
               spellCheck={false}
             />
@@ -206,7 +206,7 @@ export function ControlPanel({ form, loading, error, onSubmit }) {
             <input
               value={values.llmFastModel}
               onChange={(event) => actions.setLlmFastModel(event.target.value)}
-              placeholder="예: gpt-4o-mini"
+              placeholder="예: openai/gpt-5-nano"
             />
           </label>
           <label>
@@ -214,7 +214,7 @@ export function ControlPanel({ form, loading, error, onSubmit }) {
             <input
               value={values.llmStrongModel}
               onChange={(event) => actions.setLlmStrongModel(event.target.value)}
-              placeholder="예: gpt-4o"
+              placeholder="예: openai/gpt-5-mini"
             />
           </label>
         </div>

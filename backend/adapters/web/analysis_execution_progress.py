@@ -92,12 +92,14 @@ def dataset_finished_event(
 def final_payload(
     items: list[AnalysisItem],
     *,
+    prepared_datasets: list[PreparedDataset],
     dependencies: WebAdapterDependencies,
 ) -> AnalysisPayload:
     return _attach_batch_report_path(
         _analysis_payload(items),
         items=items,
         dependencies=dependencies,
+        prepared_datasets=prepared_datasets,
     )
 
 

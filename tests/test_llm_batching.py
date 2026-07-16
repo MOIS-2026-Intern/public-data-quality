@@ -8,7 +8,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from backend.application.agents.routing import LLMRoutingAgent
 from backend.application.agents.semantic_profiling import SemanticProfilingAgent
-from backend.application.services.resolution import LLMColumnResolver
+from backend.application.services.resolution import LLMColumnResolver, LLMSemanticProfiler
 from backend.domain.entities.models import ColumnProfile, DatasetMeta
 
 
@@ -98,18 +98,26 @@ class FakeRelationshipLLM:
 
     def __init__(self, payload: dict) -> None:
         self.payload = payload
+        self.calls = 0
+        self.prompts: list[str] = []
 
     @property
     def enabled(self) -> bool:
         return True
 
     def invoke_json(self, prompt: str, *, system_prompt: str | None = None) -> FakeLLMResponse | None:
+        self.calls += 1
+        self.prompts.append(prompt)
         return FakeLLMResponse(json.dumps(self.payload, ensure_ascii=False))
+
+
+class FakeRoutingLLM(FakeRelationshipLLM):
+    pass
 
 
 def test_routing_agent_batches_llm_resolution() -> None:
     resolver = FakeBatchResolver()
-    columns = [_column("기관명"), _column("시설명")]
+    columns = [_column("기관"), _column("시설")]
 
     result = LLMRoutingAgent(column_resolver=resolver).run(
         {
@@ -123,6 +131,25 @@ def test_routing_agent_batches_llm_resolution() -> None:
     assert resolver.resolve_many_calls == 1
     assert resolver.relationship_calls == 1
     assert all(column.assigned_rules == ["required_value"] for column in result["columns"])
+    assert all(column.semantic_tags == ["name"] for column in result["columns"])
+
+
+def test_routing_agent_skips_llm_resolution_for_clear_local_routes() -> None:
+    resolver = FakeBatchResolver()
+    columns = [_column("기관명"), _column("시설명")]
+
+    result = LLMRoutingAgent(column_resolver=resolver).run(
+        {
+            "use_llm_agents": True,
+            "dataset_meta": DatasetMeta(dataset_id="d", dataset_name="테스트", provider_name="기관"),
+            "columns": columns,
+            "agent_traces": [],
+        }
+    )
+
+    assert resolver.resolve_many_calls == 0
+    assert resolver.relationship_calls == 1
+    assert all("required_value" in column.assigned_rules for column in result["columns"])
     assert all(column.semantic_tags == ["name"] for column in result["columns"])
 
 
@@ -141,6 +168,115 @@ def test_semantic_profiling_agent_batches_llm_profiles() -> None:
     assert profiler.profile_many_calls == 1
     assert all(column.semantic_profile_label == "기관 명칭" for column in result["columns"])
     assert all(column.semantic_profile_confidence == 0.92 for column in result["columns"])
+
+
+def test_column_resolver_escalates_only_low_confidence_columns_to_strong() -> None:
+    fast_llm = FakeRoutingLLM(
+        {
+            "columns": [
+                {
+                    "raw_name": "명확컬럼",
+                    "normalized_name": "명확컬럼",
+                    "semantic_tags": ["name"],
+                    "assigned_rules": ["required_value"],
+                    "confidence": 0.95,
+                    "reason": "명확합니다.",
+                },
+                {
+                    "raw_name": "애매컬럼",
+                    "normalized_name": "애매컬럼",
+                    "semantic_tags": [],
+                    "assigned_rules": [],
+                    "confidence": 0.30,
+                    "reason": "애매합니다.",
+                },
+            ]
+        }
+    )
+    strong_llm = FakeRoutingLLM(
+        {
+            "columns": [
+                {
+                    "raw_name": "애매컬럼",
+                    "normalized_name": "애매컬럼",
+                    "semantic_tags": ["name"],
+                    "assigned_rules": ["required_value"],
+                    "confidence": 0.97,
+                    "reason": "정밀 검증 결과 명칭 컬럼입니다.",
+                }
+            ]
+        }
+    )
+    strong_llm.model_name = "fake-strong"
+    resolver = LLMColumnResolver(fast_llm=fast_llm, strong_llm=strong_llm)
+
+    resolved = resolver.resolve_many(
+        {
+            "dataset_meta": DatasetMeta(dataset_id="d", dataset_name="테스트", provider_name="기관"),
+            "columns": [_column("명확컬럼"), _column("애매컬럼")],
+        },
+        [_column("명확컬럼"), _column("애매컬럼")],
+    )
+
+    assert fast_llm.calls == 1
+    assert strong_llm.calls == 1
+    assert "애매컬럼" in strong_llm.prompts[0]
+    assert strong_llm.prompts[0].count("명확컬럼") == 1
+    assert strong_llm.prompts[0].count("애매컬럼") > 1
+    assert resolved["명확컬럼"]["_llm_stage"] == "fast"
+    assert resolved["애매컬럼"]["_llm_stage"] == "strong"
+    assert resolved["애매컬럼"]["_llm_escalated"] is True
+
+
+def test_semantic_profiler_escalates_only_low_confidence_columns_to_strong() -> None:
+    fast_llm = FakeRoutingLLM(
+        {
+            "columns": [
+                {
+                    "raw_name": "명확컬럼",
+                    "label": "명확 컬럼",
+                    "description": "의미가 명확한 컬럼입니다.",
+                    "confidence": 0.94,
+                },
+                {
+                    "raw_name": "애매컬럼",
+                    "label": "애매 컬럼",
+                    "description": "의미가 애매한 컬럼입니다.",
+                    "confidence": 0.20,
+                },
+            ]
+        }
+    )
+    strong_llm = FakeRoutingLLM(
+        {
+            "columns": [
+                {
+                    "raw_name": "애매컬럼",
+                    "label": "정밀 컬럼",
+                    "description": "정밀 검증으로 보완한 컬럼입니다.",
+                    "confidence": 0.96,
+                }
+            ]
+        }
+    )
+    strong_llm.model_name = "fake-strong"
+    profiler = LLMSemanticProfiler(fast_llm=fast_llm, strong_llm=strong_llm)
+
+    profiles = profiler.profile_many(
+        {
+            "dataset_meta": DatasetMeta(dataset_id="d", dataset_name="테스트", provider_name="기관"),
+            "columns": [_column("명확컬럼"), _column("애매컬럼")],
+        },
+        [_column("명확컬럼"), _column("애매컬럼")],
+    )
+
+    assert fast_llm.calls == 1
+    assert strong_llm.calls == 1
+    assert "애매컬럼" in strong_llm.prompts[0]
+    assert "명확컬럼" not in strong_llm.prompts[0]
+    assert profiles["명확컬럼"]["_llm_stage"] == "fast"
+    assert profiles["애매컬럼"]["_llm_stage"] == "strong"
+    assert profiles["애매컬럼"]["_llm_escalated"] is True
 
 
 def test_column_resolver_filters_plain_sigungu_reference_relationships() -> None:
@@ -194,6 +330,36 @@ def test_column_resolver_filters_plain_sigungu_reference_relationships() -> None
     )
 
     assert resolved == []
+
+
+def test_column_resolver_skips_relationship_llm_without_relationship_targets() -> None:
+    columns = [
+        ColumnProfile(
+            raw_name="비고",
+            normalized_name="비고",
+            source="response",
+            semantic_tags=["free_text"],
+            assigned_rules=[],
+            sample_values=["참고 사항"],
+            top_values=[("참고 사항", 1)],
+            inferred_primitive_type="string",
+            distinct_count=1,
+            non_empty_count=1,
+        )
+    ]
+    llm = FakeRelationshipLLM({"relationship_candidates": []})
+    resolver = LLMColumnResolver(fast_llm=llm)
+
+    resolved = resolver.resolve_relationships(
+        {
+            "dataset_meta": DatasetMeta(dataset_id="d", dataset_name="테스트", provider_name="기관"),
+            "columns": columns,
+        },
+        columns,
+    )
+
+    assert resolved == []
+    assert llm.calls == 0
 
 
 def test_column_resolver_filters_plain_eupmyeondong_reference_relationships() -> None:

@@ -8,9 +8,13 @@ from backend.adapters.web.dependencies import WebAdapterDependencies
 from backend.adapters.web.pipeline_service import PipelineRunResult
 from backend.application.dto import AnalysisJob, PipelineExecutionRequest
 from backend.infrastructure.io.sources import PreparedDataset
+from backend.infrastructure.io.loaders.loading import iter_uploaded_rows
 from backend.infrastructure.persistence import SQLiteAnalysisJobRepository
 from backend.infrastructure.reporting.pipeline_outputs import attach_report_paths
-from backend.infrastructure.reporting.workbooks import write_batch_error_report
+from backend.infrastructure.reporting.workbooks import (
+    write_batch_column_error_report,
+    write_batch_error_report,
+)
 from backend.infrastructure.storage import FilesystemArtifactStore
 
 
@@ -31,6 +35,7 @@ def _dependencies(tmp_path: Path, queue: _FakeQueue) -> WebAdapterDependencies:
         validation_output_dir=lambda base_dir=None: Path(base_dir or tmp_path / "validation") / "validation",
         attach_report_paths=attach_report_paths,
         write_batch_error_report=write_batch_error_report,
+        write_batch_column_error_report=write_batch_column_error_report,
         public_download_name=lambda filename, default_suffix=".xlsx": filename,
         prepare_saved_dataset=lambda *args, **kwargs: [],
         prepare_url_datasets=lambda *args, **kwargs: [],
@@ -110,6 +115,76 @@ def test_async_job_service_submits_processes_and_finalizes(monkeypatch, tmp_path
     assert stored_job.items[0].error_report_artifact is not None
     assert payload["batch"] is False
     assert payload["result"]["summary"]["error_report_xlsx"].startswith(f"jobs/{job.job_id}/")
+
+
+def test_async_job_service_finalizes_batch_column_error_report(monkeypatch, tmp_path) -> None:
+    queue = _FakeQueue()
+    dependencies = _dependencies(tmp_path, queue)
+    first_path = tmp_path / "first.csv"
+    second_path = tmp_path / "second.csv"
+    first_path.write_text("name,price\nA,1\n", encoding="utf-8")
+    second_path.write_text("name,price\nB,2\n", encoding="utf-8")
+    datasets = [
+        PreparedDataset(display_name="first.csv", path=first_path, source_type="file", response_type="csv"),
+        PreparedDataset(display_name="second.csv", path=second_path, source_type="file", response_type="csv"),
+    ]
+
+    monkeypatch.setattr(
+        job_service,
+        "run_pipeline",
+        lambda *, request, dependencies=None: PipelineRunResult(
+            response={
+                "summary": {
+                    "dataset_name": request.uploaded_dataset_name or "sample.csv",
+                    "column_count": 2,
+                    "row_count": 1,
+                    "finding_count": 1,
+                    "issue_finding_count": 1,
+                    "manual_review_finding_count": 0,
+                },
+                "preview_headers": ["name", "price"],
+                "preview_rows": [{"name": "A", "price": "1"}],
+                "columns": [{"raw_name": "name"}, {"raw_name": "price"}],
+                "findings": [
+                    {
+                        "column_name": "price",
+                        "finding_type": "issue",
+                        "category_label": "컬럼 완결성 검증",
+                        "row_indexes": [1],
+                        "message": "가격 오류",
+                        "llm_final_verification": "LLM 확인 결과 오류입니다.",
+                        "row_values": {"1": "1"},
+                    }
+                ],
+            },
+            validation_rows=list(iter_uploaded_rows(request.uploaded_dataset_csv)),
+        ),
+    )
+
+    job = job_service.submit_analysis_job(
+        prepared_datasets=datasets,
+        request=PipelineExecutionRequest(),
+        dependencies=dependencies,
+    )
+
+    item_results = [
+        job_service.process_analysis_job_item(
+            job_id=job.job_id,
+            item_id=item.item_id,
+            dependencies=dependencies,
+        )
+        for item in job.items
+    ]
+    payload = job_service.finalize_analysis_job(
+        job_id=job.job_id,
+        item_results=item_results,
+        dependencies=dependencies,
+    )
+
+    assert payload["batch"] is True
+    assert payload["summary"]["error_report_xlsx"].startswith(f"jobs/{job.job_id}/")
+    assert payload["summary"]["column_error_report_xlsx"].startswith(f"jobs/{job.job_id}/")
+    assert payload["summary"]["column_error_report_download_path"].startswith("/api/jobs/artifacts/download?key=")
 
 
 def test_public_job_payload_hides_api_key_and_source_artifact(tmp_path) -> None:

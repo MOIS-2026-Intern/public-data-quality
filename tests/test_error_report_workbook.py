@@ -5,7 +5,11 @@ from openpyxl import load_workbook
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from backend.infrastructure.reporting.workbooks import write_batch_error_report, write_error_report
+from backend.infrastructure.reporting.workbooks import (
+    write_batch_column_error_report,
+    write_batch_error_report,
+    write_error_report,
+)
 
 
 def _issue_finding(column_name: str, row_index: int, value: str, message: str) -> dict:
@@ -50,13 +54,27 @@ def test_single_error_report_uses_requested_sheets_and_detail_columns(tmp_path) 
 
     assert report_path.suffix == ".xlsx"
     assert report_path.name == "화성시_어린이보호구역.xlsx"
-    assert workbook.sheetnames == ["요약", "전체 데이터 오류 표시", "오류 상세", "수동 검토 상세"]
+    assert workbook.sheetnames == ["요약", "전체 데이터 오류 표시", "컬럼별 데이터 오류 표시", "오류 상세", "수동 검토 상세"]
     assert [cell.value for cell in workbook["요약"]["A"]] == [
         "항목",
         "전체 컬럼 수",
         "전체 행 수",
         "전체 오류 발생 컬럼 수",
         "오류 발생 행 수",
+    ]
+    assert [cell.value for cell in workbook["컬럼별 데이터 오류 표시"][1]] == [
+        "row_index",
+        "시설명",
+        "가격",
+        "오류 여부",
+        "오류 내용",
+    ]
+    assert [cell.value for cell in workbook["컬럼별 데이터 오류 표시"][3]] == [
+        2,
+        "B",
+        "메뉴삭제",
+        "오류",
+        "금액 컬럼에 금액이 아닌 값이 있습니다., LLM 확인 결과 오류입니다.",
     ]
     assert [cell.value for cell in workbook["오류 상세"][1]] == [
         "데이터명",
@@ -155,4 +173,81 @@ def test_batch_error_report_has_summary_and_detail_sheets(tmp_path) -> None:
         "컬럼 특성 유효성 검증",
         "A",
         "시설명은 수동 검토가 필요합니다.",
+    ]
+
+
+def test_batch_column_error_report_creates_one_sheet_per_dataset(tmp_path) -> None:
+    entries = [
+        {
+            "result": {
+                "summary": {"dataset_name": "A.csv", "column_count": 2, "row_count": 2},
+                "preview_headers": ["시설명", "가격"],
+                "findings": [_issue_finding("가격", 2, "메뉴삭제", "금액 오류")],
+            },
+            "validation_rows": [
+                {"시설명": "A", "가격": "1000"},
+                {"시설명": "B", "가격": "메뉴삭제"},
+            ],
+        },
+        {
+            "result": {
+                "summary": {"dataset_name": "B.csv", "column_count": 1, "row_count": 1},
+                "preview_headers": ["연락처"],
+                "findings": [_issue_finding("연락처", 1, "abc", "연락처 오류")],
+            },
+            "validation_rows": [{"연락처": "abc"}],
+        },
+    ]
+
+    report_path = write_batch_column_error_report(entries=entries, output_dir=tmp_path)
+    workbook = load_workbook(report_path)
+
+    assert report_path.suffix == ".xlsx"
+    assert report_path.name == "전체_컬럼별_데이터_오류.xlsx"
+    assert workbook.sheetnames == ["A.csv", "B.csv"]
+    assert [cell.value for cell in workbook["A.csv"][1]] == [
+        "row_index",
+        "시설명",
+        "가격",
+        "오류 여부",
+        "오류 내용",
+    ]
+    assert [cell.value for cell in workbook["A.csv"][3]] == [
+        2,
+        "B",
+        "메뉴삭제",
+        "오류",
+        "금액 오류, LLM 확인 결과 오류입니다.",
+    ]
+    assert [cell.value for cell in workbook["B.csv"][2]] == [
+        1,
+        "abc",
+        "오류",
+        "연락처 오류, LLM 확인 결과 오류입니다.",
+    ]
+
+
+def test_column_error_report_aggregates_multiple_column_errors_on_same_row(tmp_path) -> None:
+    result = {
+        "summary": {"dataset_name": "sample.csv", "column_count": 2, "row_count": 1},
+        "preview_headers": ["주택보험금(천원)", "온실지급건수(건)"],
+        "findings": [
+            _issue_finding("주택보험금(천원)", 1, "", "주택보험금 오류"),
+            _issue_finding("온실지급건수(건)", 1, "1", "온실지급건수 오류"),
+        ],
+    }
+    validation_rows = [{"주택보험금(천원)": "", "온실지급건수(건)": "1"}]
+
+    report_path = write_error_report(result=result, validation_rows=validation_rows, output_dir=tmp_path)
+    workbook = load_workbook(report_path)
+
+    assert [cell.value for cell in workbook["컬럼별 데이터 오류 표시"][2]] == [
+        1,
+        None,
+        "1",
+        "오류",
+        (
+            "주택보험금(천원): 주택보험금 오류, LLM 확인 결과 오류입니다. / "
+            "온실지급건수(건): 온실지급건수 오류, LLM 확인 결과 오류입니다."
+        ),
     ]

@@ -3,10 +3,19 @@ import { FindingsTable } from "./FindingsTable";
 import { SummaryCard } from "./common";
 
 export function getReportDownloadUrl(result) {
-  if (result?.summary?.error_report_download_path) {
-    return result.summary.error_report_download_path;
+  return getSummaryReportDownloadUrl(result, "error_report");
+}
+
+export function getColumnErrorReportDownloadUrl(result) {
+  return getSummaryReportDownloadUrl(result, "column_error_report");
+}
+
+function getSummaryReportDownloadUrl(result, keyPrefix) {
+  const downloadPath = result?.summary?.[`${keyPrefix}_download_path`];
+  if (downloadPath) {
+    return downloadPath;
   }
-  const reportPath = result?.summary?.error_report_xlsx;
+  const reportPath = result?.summary?.[`${keyPrefix}_xlsx`];
   if (!reportPath) {
     return "";
   }

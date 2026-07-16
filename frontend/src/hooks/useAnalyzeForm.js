@@ -14,8 +14,8 @@ export function useAnalyzeForm() {
   const [apiParams, setApiParams] = useState("");
   const [useLlm] = useState(true);
   const [openAiApiKey, setOpenAiApiKey] = useState("");
-  const [llmFastModel, setLlmFastModel] = useState("gpt-4o-mini");
-  const [llmStrongModel, setLlmStrongModel] = useState("gpt-4o");
+  const [llmFastModel, setLlmFastModel] = useState("openai/gpt-5-nano");
+  const [llmStrongModel, setLlmStrongModel] = useState("openai/gpt-5-mini");
 
   return {
     values: {

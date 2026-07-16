@@ -60,6 +60,31 @@ def test_required_value_allows_blank_sigungu_for_sejong() -> None:
     assert [finding.rule_id for finding in findings] == []
 
 
+def test_required_value_allows_blank_sigun_for_sejong() -> None:
+    rows = [
+        {"시도": "세종특별자치시", "시군": ""},
+        {"시도": "서울특별시", "시군": "강남구"},
+    ]
+    column = ColumnProfile(
+        raw_name="시군",
+        normalized_name="시군",
+        source="response",
+        semantic_tags=[],
+        assigned_rules=["required_value"],
+        inferred_primitive_type="text",
+        non_empty_count=1,
+        null_count=1,
+        null_ratio=0.5,
+        distinct_count=1,
+        sample_values=["강남구"],
+        top_values=[("강남구", 1)],
+    )
+
+    findings = validate_column(column, _dataset_meta(), rows)
+
+    assert [finding.rule_id for finding in findings] == []
+
+
 def test_required_value_skips_non_sejong_blank_sigungu_when_null_ratio_is_high() -> None:
     rows = [{"시도명": "세종특별자치시", "시군구명": ""}]
     rows.extend(

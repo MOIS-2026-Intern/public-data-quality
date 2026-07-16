@@ -26,7 +26,7 @@ function validateAnalyzeRequest(request, dataUrls) {
     throw new Error("호출 URL을 입력하세요.");
   }
   if (request.useLlm && !request.openAiApiKey.trim()) {
-    throw new Error("OpenAI API Key를 입력하세요.");
+    throw new Error("BizRouter API Key를 입력하세요.");
   }
 }
 

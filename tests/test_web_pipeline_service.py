@@ -28,6 +28,7 @@ def _dependencies(use_case: _FakeUseCase) -> WebAdapterDependencies:
         validation_output_dir=lambda base_dir=None: Path("/tmp"),
         attach_report_paths=lambda **kwargs: kwargs["response"],
         write_batch_error_report=lambda **kwargs: Path("/tmp/report.xlsx"),
+        write_batch_column_error_report=lambda **kwargs: Path("/tmp/column_report.xlsx"),
         public_download_name=lambda filename, default_suffix=".xlsx": filename,
         prepare_saved_dataset=lambda *args, **kwargs: [],
         prepare_url_datasets=lambda *args, **kwargs: [],

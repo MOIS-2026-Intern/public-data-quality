@@ -5,8 +5,11 @@ from dataclasses import dataclass
 from typing import Any
 
 from backend.config.categorical import (
+    CATEGORICAL_LLM_MAX_DISTINCT,
+    CATEGORICAL_LLM_MAX_DISTINCT_RATIO,
     CATEGORICAL_LLM_MAX_VALUES,
     CATEGORICAL_LLM_MIN_DISTINCT,
+    CATEGORICAL_LLM_SKIP_TAGS,
     CATEGORICAL_NAME_TOKENS,
     CATEGORICAL_SEMANTIC_TAGS,
 )
@@ -36,14 +39,20 @@ def is_candidate_column(column: ColumnProfile) -> bool:
         return False
     if not column.top_values:
         return False
+    if CATEGORICAL_LLM_SKIP_TAGS.intersection(set(column.semantic_tags)):
+        return False
     if looks_free_text_column(column):
-        return True
+        return False
     return bool(CATEGORICAL_SEMANTIC_TAGS.intersection(set(column.semantic_tags))) or any(
         token in column.raw_name for token in CATEGORICAL_NAME_TOKENS
     )
 
 
 def llm_skip_reason(column: ColumnProfile, counter: Counter[str]) -> str | None:
+    if CATEGORICAL_LLM_SKIP_TAGS.intersection(set(column.semantic_tags)):
+        return "deterministic_semantic_tag"
+    if looks_free_text_column(column):
+        return "free_text"
     if not is_candidate_column(column):
         return "llm_candidate_filter"
     distinct_count = len(counter)
@@ -51,6 +60,11 @@ def llm_skip_reason(column: ColumnProfile, counter: Counter[str]) -> str | None:
         return "empty_counter"
     if distinct_count < CATEGORICAL_LLM_MIN_DISTINCT:
         return f"distinct_count={distinct_count}"
+    if distinct_count > CATEGORICAL_LLM_MAX_DISTINCT:
+        return f"distinct_count>{CATEGORICAL_LLM_MAX_DISTINCT}"
+    total = sum(counter.values())
+    if total and distinct_count / total > CATEGORICAL_LLM_MAX_DISTINCT_RATIO:
+        return f"distinct_ratio>{CATEGORICAL_LLM_MAX_DISTINCT_RATIO:.2f}"
     return None
 
 

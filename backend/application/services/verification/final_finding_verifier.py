@@ -87,6 +87,10 @@ def _finding_candidates(
     return sorted(candidates, key=_candidate_priority)
 
 
+def _skip_llm_final_verification(finding: ValidationFinding) -> bool:
+    return _is_protected_deterministic_issue(finding)
+
+
 def _group_candidates(candidates: list[dict[str, Any]]) -> list[dict[str, Any]]:
     grouped: dict[tuple[Any, ...], dict[str, Any]] = {}
     ordered_keys: list[tuple[Any, ...]] = []

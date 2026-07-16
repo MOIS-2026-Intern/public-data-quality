@@ -94,6 +94,22 @@ def issue_messages_by_cell(result: dict[str, Any]) -> dict[tuple[int, str], list
     return issue_map
 
 
+def issue_details_by_cell(result: dict[str, Any]) -> dict[tuple[int, str], list[str]]:
+    issue_map: dict[tuple[int, str], list[str]] = defaultdict(list)
+    for finding in result.get("findings", []):
+        if finding.get("finding_type") != "issue":
+            continue
+        column_name = str(finding.get("column_name") or "")
+        if not column_name:
+            continue
+        detail = finding_issue_detail(finding)
+        if not detail:
+            continue
+        for row_index in finding_row_indexes(finding):
+            issue_map[(row_index, column_name)].append(detail)
+    return issue_map
+
+
 def finding_message(finding: dict[str, Any]) -> str:
     parts = [
         str(finding.get("category_label") or "").strip(),
@@ -106,6 +122,14 @@ def finding_message(finding: dict[str, Any]) -> str:
     rule_id = str(finding.get("rule_id") or "").strip()
     message = " / ".join(part for part in parts if part)
     return f"{message} ({rule_id})" if rule_id else message
+
+
+def finding_issue_detail(finding: dict[str, Any]) -> str:
+    message = str(finding.get("message") or "").strip()
+    llm_final_verification = str(finding.get("llm_final_verification") or "").strip()
+    if message and llm_final_verification:
+        return f"{message}, {llm_final_verification}"
+    return message or llm_final_verification
 
 
 def comment_text(messages: list[str]) -> str:

@@ -24,7 +24,10 @@ from backend.infrastructure.orchestration.factory import LangGraphPipelineExecut
 from backend.infrastructure.persistence import SQLiteAnalysisJobRepository
 from backend.infrastructure.reporting.artifacts import public_download_name
 from backend.infrastructure.reporting.pipeline_outputs import attach_report_paths
-from backend.infrastructure.reporting.workbooks import write_batch_error_report
+from backend.infrastructure.reporting.workbooks import (
+    write_batch_column_error_report,
+    write_batch_error_report,
+)
 from backend.infrastructure.storage import FilesystemArtifactStore
 
 
@@ -89,6 +92,7 @@ def build_web_dependencies() -> WebAdapterDependencies:
         validation_output_dir=validation_output_dir,
         attach_report_paths=attach_report_paths,
         write_batch_error_report=write_batch_error_report,
+        write_batch_column_error_report=write_batch_column_error_report,
         public_download_name=public_download_name,
         prepare_saved_dataset=prepare_saved_dataset,
         prepare_url_datasets=prepare_url_datasets,

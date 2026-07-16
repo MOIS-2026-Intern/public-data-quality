@@ -8,6 +8,7 @@ from flask import abort
 
 from backend.application.dto import PipelineExecutionRequest, PreparedDataset
 from backend.config.pipeline import PIPELINE_PROGRESS_STEPS, REPORT_PROGRESS_STEP
+from backend.infrastructure.io.loaders.loading import iter_uploaded_rows
 
 from .dependencies import WebAdapterDependencies, default_web_dependencies
 from .pipeline_service import PipelineRunResult, run_pipeline
@@ -132,22 +133,32 @@ def _attach_batch_report_path(
     *,
     items: list[AnalysisItem],
     dependencies: WebAdapterDependencies | None = None,
+    prepared_datasets: list[PreparedDataset] | None = None,
 ) -> AnalysisPayload:
     if not payload.get("batch"):
         return payload
 
     summary = payload.get("summary")
-    if not isinstance(summary, dict) or summary.get("error_report_xlsx"):
+    if not isinstance(summary, dict):
         return payload
     if not any(item.get("ok") and isinstance(item.get("result"), dict) for item in items):
         return payload
 
     resolved_dependencies = _resolve_dependencies(dependencies)
-    report_path = resolved_dependencies.write_batch_error_report(
-        items=[item for item in items if isinstance(item, dict)],
-        output_dir=resolved_dependencies.validation_output_dir(),
-    )
-    summary["error_report_xlsx"] = report_path.name
+    if not summary.get("error_report_xlsx"):
+        report_path = resolved_dependencies.write_batch_error_report(
+            items=[item for item in items if isinstance(item, dict)],
+            output_dir=resolved_dependencies.validation_output_dir(),
+        )
+        summary["error_report_xlsx"] = report_path.name
+    if prepared_datasets and not summary.get("column_error_report_xlsx"):
+        column_report_entries = _prepared_batch_column_report_entries(items, prepared_datasets)
+        if column_report_entries:
+            column_report_path = resolved_dependencies.write_batch_column_error_report(
+                entries=column_report_entries,
+                output_dir=resolved_dependencies.validation_output_dir(),
+            )
+            summary["column_error_report_xlsx"] = column_report_path.name
     return payload
 
 
@@ -193,3 +204,30 @@ def _report_download_path(value: str, *, dependencies: WebAdapterDependencies | 
 
 def _download_name(filename: str, *, dependencies: WebAdapterDependencies | None = None) -> str:
     return _resolve_dependencies(dependencies).public_download_name(filename, default_suffix=".xlsx")
+
+
+def _prepared_batch_column_report_entries(
+    items: list[AnalysisItem],
+    prepared_datasets: list[PreparedDataset],
+) -> list[dict[str, Any]]:
+    entries: list[dict[str, Any]] = []
+    for item, dataset in zip(items, prepared_datasets):
+        result = item.get("result")
+        if not item.get("ok") or not isinstance(result, dict):
+            continue
+        normalized_result = result
+        if not result.get("summary", {}).get("dataset_name"):
+            normalized_result = {
+                **result,
+                "summary": {
+                    **result.get("summary", {}),
+                    "dataset_name": dataset.display_name,
+                },
+            }
+        entries.append(
+            {
+                "result": normalized_result,
+                "validation_rows": list(iter_uploaded_rows(dataset.path)),
+            }
+        )
+    return entries

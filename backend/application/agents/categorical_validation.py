@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any
 
 from backend.application.agents.base import BaseAgent
@@ -28,7 +29,7 @@ from backend.application.services.categorical_validation.row_context import (
     run_llm_row_context_validation,
 )
 from backend.application.services.categorical_validation.value_validator import LLMCategoricalValueValidator
-from backend.config.categorical import ROW_CONTEXT_DEFAULT_LIMIT
+from backend.config.categorical import CATEGORICAL_LLM_MAX_WORKERS, ROW_CONTEXT_DEFAULT_LIMIT
 from backend.domain.policies.categorical import (
     LocalCategoricalFindingCounts,
     apply_local_categorical_findings,
@@ -92,38 +93,13 @@ class CategoricalSemanticValidationAgent(BaseAgent):
             debug_detail=lambda: self._llm_debug_detail(True),
         )
 
-    def _validate_column(
+    def _run_llm_column_task(
         self,
         *,
         column,
-        rows: list[dict[str, str]],
         dataset_meta,
-        findings,
-        traces: list,
-        use_llm: bool,
-    ) -> None:
-        indexed_values = index_column_values(rows, column.raw_name)
-        counter = indexed_values.counter
-        local_counts = apply_local_categorical_findings(
-            column=column,
-            rows=rows,
-            counter=counter,
-            findings=findings,
-            value_row_indexes=indexed_values.row_indexes,
-        )
-
-        if not use_llm:
-            self._trace_local_skip(traces, column, local_counts, "llm_disabled")
-            return
-
-        skip_reason = llm_skip_reason(column, counter)
-        if skip_reason == "empty_counter":
-            return
-        if skip_reason is not None:
-            self._trace_local_skip(traces, column, local_counts, skip_reason)
-            return
-
-        values = validation_values(counter)
+        values: list[dict[str, Any]],
+    ) -> dict[str, Any]:
         result = self.validator.validate(
             dataset_name=dataset_meta.dataset_name,
             provider_name=dataset_meta.provider_name,
@@ -133,37 +109,43 @@ class CategoricalSemanticValidationAgent(BaseAgent):
             format_kind=column.format_kind or ("free_format" if looks_free_text_column(column) else "fixed_format"),
             values=values,
         )
-        if not result:
-            llm_error, llm_preview = self._llm_debug_detail(use_llm)
-            traces.append(
-                self.trace(
-                    action="categorical_semantic_validate",
-                    target=column.raw_name,
-                    detail=(f"llm_no_result,error={llm_error},preview={llm_preview}"),
-                )
-            )
-            return
+        llm_error, llm_preview = self._llm_debug_detail(True)
+        return {
+            "column": column,
+            "values": values,
+            "result": result,
+            "llm_error": llm_error,
+            "llm_preview": llm_preview,
+        }
 
-        generated = apply_llm_categorical_findings(
-            column=column,
-            rows=rows,
-            result=result,
-            findings=findings,
-        )
-        traces.append(
-            self.trace(
-                action="categorical_semantic_validate",
-                target=column.raw_name,
-                detail=(
-                    f"values={len(values)}, findings={generated}, "
-                    f"domain={result.get('domain_label', '')}, "
-                    f"overall_confidence={float(result.get('overall_confidence') or 0.0):.2f}, "
-                    f"model={result.get('_llm_model', '')}, "
-                    f"stage={result.get('_llm_stage', '')}, "
-                    f"escalated={bool(result.get('_llm_escalated'))}"
-                ),
-            )
-        )
+    def _run_llm_column_tasks(self, tasks: list[dict[str, Any]], dataset_meta) -> list[dict[str, Any]]:
+        if not tasks:
+            return []
+        max_workers = max(1, min(CATEGORICAL_LLM_MAX_WORKERS, len(tasks)))
+        if max_workers == 1:
+            return [
+                self._run_llm_column_task(
+                    column=task["column"],
+                    dataset_meta=dataset_meta,
+                    values=task["values"],
+                )
+                for task in tasks
+            ]
+
+        results: list[dict[str, Any] | None] = [None] * len(tasks)
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            futures = {
+                executor.submit(
+                    self._run_llm_column_task,
+                    column=task["column"],
+                    dataset_meta=dataset_meta,
+                    values=task["values"],
+                ): index
+                for index, task in enumerate(tasks)
+            }
+            for future in as_completed(futures):
+                results[futures[future]] = future.result()
+        return [result for result in results if result is not None]
 
     def run(self, state: PipelineState) -> PipelineState:
         request = pipeline_request(state)
@@ -187,14 +169,61 @@ class CategoricalSemanticValidationAgent(BaseAgent):
             )
 
         dataset_meta = require_dataset_meta(state)
+        llm_tasks: list[dict[str, Any]] = []
         for column in data.columns:
-            self._validate_column(
+            indexed_values = index_column_values(rows, column.raw_name)
+            counter = indexed_values.counter
+            local_counts = apply_local_categorical_findings(
                 column=column,
                 rows=rows,
-                dataset_meta=dataset_meta,
+                counter=counter,
                 findings=findings,
-                traces=traces,
-                use_llm=use_llm,
+                value_row_indexes=indexed_values.row_indexes,
+            )
+            if not use_llm:
+                self._trace_local_skip(traces, column, local_counts, "llm_disabled")
+                continue
+
+            skip_reason = llm_skip_reason(column, counter)
+            if skip_reason == "empty_counter":
+                continue
+            if skip_reason is not None:
+                self._trace_local_skip(traces, column, local_counts, skip_reason)
+                continue
+            llm_tasks.append({"column": column, "values": validation_values(counter)})
+
+        for item in self._run_llm_column_tasks(llm_tasks, dataset_meta):
+            column = item["column"]
+            values = item["values"]
+            result = item["result"]
+            if not result:
+                traces.append(
+                    self.trace(
+                        action="categorical_semantic_validate",
+                        target=column.raw_name,
+                        detail=(f"llm_no_result,error={item['llm_error']},preview={item['llm_preview']}"),
+                    )
+                )
+                continue
+            generated = apply_llm_categorical_findings(
+                column=column,
+                rows=rows,
+                result=result,
+                findings=findings,
+            )
+            traces.append(
+                self.trace(
+                    action="categorical_semantic_validate",
+                    target=column.raw_name,
+                    detail=(
+                        f"values={len(values)}, findings={generated}, "
+                        f"domain={result.get('domain_label', '')}, "
+                        f"overall_confidence={float(result.get('overall_confidence') or 0.0):.2f}, "
+                        f"model={result.get('_llm_model', '')}, "
+                        f"stage={result.get('_llm_stage', '')}, "
+                        f"escalated={bool(result.get('_llm_escalated'))}"
+                    ),
+                )
             )
 
         if use_llm:

@@ -167,7 +167,7 @@ class LLMCategoricalValueValidator:
             ),
             system_prompt=CATEGORICAL_VALUE_SYSTEM_PROMPT,
             review_keys=self.VALUE_REVIEW_KEYS,
-            prefer_strong=True,
+            prefer_strong=False,
         )
         if payload is None:
             return None
