@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 import sys
 
@@ -192,4 +193,118 @@ def test_unquoted_commas_do_not_merge_structured_name_columns(tmp_path) -> None:
             "처리상태": "청구완료(수정의결)",
             "URL": "https://www.juminegov.go.kr/ordn/reqDtls?pSfLgsReqOnlineSno=201956800001001",
         }
+    ]
+
+
+def test_trailing_empty_header_does_not_shift_csv_values(tmp_path) -> None:
+    path = tmp_path / "trailing_empty_header.csv"
+    path.write_text(
+        "\n".join(
+            [
+                "순서,기관구분,기관구분명,기관명,제출일,",
+                "1,4,공공기관,정보통신기획평가원,2020-08-24,",
+                "2,4,공공기관,한국조폐공사,2020-08-24,",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    assert load_uploaded_headers(path) == ["순서", "기관구분", "기관구분명", "기관명", "제출일"]
+    assert list(iter_uploaded_rows(path)) == [
+        {
+            "순서": "1",
+            "기관구분": "4",
+            "기관구분명": "공공기관",
+            "기관명": "정보통신기획평가원",
+            "제출일": "2020-08-24",
+        },
+        {
+            "순서": "2",
+            "기관구분": "4",
+            "기관구분명": "공공기관",
+            "기관명": "한국조폐공사",
+            "제출일": "2020-08-24",
+        },
+    ]
+
+
+def test_xlsx_headers_and_rows_are_loaded(tmp_path) -> None:
+    from openpyxl import Workbook
+
+    path = tmp_path / "korean.xlsx"
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.append(["서비스명", "주소", "금액"])
+    sheet.append(["유치원", "서울", 12000])
+    sheet.append(["초등학교", "부산", None])
+    workbook.save(path)
+
+    assert load_uploaded_headers(path) == ["서비스명", "주소", "금액"]
+    assert list(iter_uploaded_rows(path)) == [
+        {"서비스명": "유치원", "주소": "서울", "금액": "12000"},
+        {"서비스명": "초등학교", "주소": "부산", "금액": ""},
+    ]
+
+
+def test_json_rows_are_loaded_from_nested_record_container(tmp_path) -> None:
+    path = tmp_path / "nested.json"
+    payload = {
+        "response": {
+            "body": {
+                "items": [
+                    {"서비스명": "유치원", "주소": {"시도": "서울"}, "태그": ["교육", "아동"]},
+                    {"서비스명": "초등학교", "주소": {"시도": "부산"}, "태그": []},
+                ]
+            }
+        }
+    }
+    path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+
+    assert load_uploaded_headers(path) == ["서비스명", "주소.시도", "태그"]
+    assert list(iter_uploaded_rows(path)) == [
+        {"서비스명": "유치원", "주소.시도": "서울", "태그": '["교육", "아동"]'},
+        {"서비스명": "초등학교", "주소.시도": "부산", "태그": ""},
+    ]
+
+
+def test_jsonl_rows_are_loaded_line_by_line(tmp_path) -> None:
+    path = tmp_path / "rows.jsonl"
+    path.write_text(
+        "\n".join(
+            [
+                json.dumps({"서비스명": "유치원", "주소": "서울"}, ensure_ascii=False),
+                "",
+                json.dumps({"서비스명": "초등학교", "주소": "부산"}, ensure_ascii=False),
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    assert load_uploaded_headers(path) == ["서비스명", "주소"]
+    assert list(iter_uploaded_rows(path)) == [
+        {"서비스명": "유치원", "주소": "서울"},
+        {"서비스명": "초등학교", "주소": "부산"},
+    ]
+
+
+def test_xml_repeated_items_are_loaded_as_rows(tmp_path) -> None:
+    path = tmp_path / "rows.xml"
+    path.write_text(
+        """
+        <response>
+          <body>
+            <items>
+              <item><서비스명>유치원</서비스명><주소>서울</주소></item>
+              <item><서비스명>초등학교</서비스명><주소>부산</주소></item>
+            </items>
+          </body>
+        </response>
+        """,
+        encoding="utf-8",
+    )
+
+    assert load_uploaded_headers(path) == ["서비스명", "주소"]
+    assert list(iter_uploaded_rows(path)) == [
+        {"서비스명": "유치원", "주소": "서울"},
+        {"서비스명": "초등학교", "주소": "부산"},
     ]

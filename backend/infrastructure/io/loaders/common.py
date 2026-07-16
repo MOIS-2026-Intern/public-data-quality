@@ -86,10 +86,14 @@ def _consistent_delimiter(sample: str, fallback_delimiter: str = ",") -> str | N
 
 
 def _row_mapping(headers: list[str], values: list[object], delimiter: str) -> dict[str, str]:
-    cleaned_headers = [header for header in clean_headers(headers) if header]
+    cleaned_headers = clean_headers(headers)
     cleaned_values = [stringify_cell(value) for value in values]
     repaired_values = _repair_overflow_row(cleaned_headers, cleaned_values, delimiter)
-    return {header: repaired_values[index] if index < len(repaired_values) else "" for index, header in enumerate(cleaned_headers)}
+    return {
+        header: repaired_values[index] if index < len(repaired_values) else ""
+        for index, header in enumerate(cleaned_headers)
+        if header
+    }
 
 
 def _repair_overflow_row(headers: list[str], values: list[str], delimiter: str) -> list[str]:
