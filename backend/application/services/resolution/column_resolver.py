@@ -14,7 +14,10 @@ from backend.application.prompts.resolution import (
 from backend.config.llm import LLM_STRONG_FALLBACK_CONFIDENCE
 from backend.config.validation import TAG_RULE_MAP, VALIDATION_CRITERIA
 from backend.domain.entities.models import ColumnProfile
-from backend.domain.policies.relationships.common import is_non_unique_local_admin_reference_pair
+from backend.domain.policies.relationships.common import (
+    is_explicit_time_relationship_pair,
+    is_non_unique_local_admin_reference_pair,
+)
 from .confidence import coerce_resolution_confidence
 from .prompt_payload import compact_column_payload
 
@@ -392,9 +395,17 @@ class LLMColumnResolver:
             candidate_columns = list(dict.fromkeys(candidate_columns))
             if len(candidate_columns) < 2:
                 continue
+            is_time_rule = rule_id in {"time_sequence_consistency", "precedence_accuracy"}
+            if is_time_rule and len(candidate_columns) != 2:
+                continue
             if rule_id == "reference_relation" and len(candidate_columns) != 2:
                 continue
             resolved_columns = [by_name[name] for name in candidate_columns]
+            if is_time_rule and not is_explicit_time_relationship_pair(
+                resolved_columns[0],
+                resolved_columns[1],
+            ):
+                continue
             if rule_id == "reference_relation" and is_non_unique_local_admin_reference_pair(
                 resolved_columns[0],
                 resolved_columns[1],

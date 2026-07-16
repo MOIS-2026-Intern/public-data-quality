@@ -4,7 +4,7 @@ import re
 from typing import Any
 
 from backend.domain.entities.models import ColumnProfile
-from ..shared.settings import NUMERIC_PAIR_BASE_STEM_TOKENS
+from ..shared.settings import NUMERIC_PAIR_BASE_STEM_TOKENS, TIME_ORDER_TOKENS
 
 
 def _compact_name(name: str) -> str:
@@ -16,6 +16,54 @@ LOCAL_ADMIN_CODE_SUFFIXES = ("", "코드", "번호", "id", "아이디", "cd")
 LOCAL_ADMIN_LABEL_SUFFIXES = ("명", "이름", "명칭")
 OFFICIAL_LOCAL_ADMIN_CODE_HINTS = ("행정구역코드", "표준코드", "전국코드", "전체코드")
 LONG_NUMERIC_CODE_RE = re.compile(r"\d{5,}")
+TIME_METRIC_TAGS = {"amount", "count", "numeric", "quantity", "rate"}
+TIME_METRIC_RULE_IDS = {"amount_domain", "number_domain", "quantity_domain", "rate_domain"}
+TIME_METRIC_NAME_TOKENS = (
+    "가입건수",
+    "건수",
+    "보험금",
+    "금액",
+    "요금",
+    "가격",
+    "합계",
+    "총계",
+    "총가입",
+    "인원",
+    "수량",
+    "비율",
+    "천원",
+    "만원",
+    "(원)",
+    "(건)",
+    "(명)",
+    "%",
+)
+TIME_LIKE_NAME_TOKENS = (
+    "일자",
+    "날짜",
+    "일시",
+    "시각",
+    "시간",
+    "시점",
+    "기준일",
+    "시작일",
+    "종료일",
+    "개시일",
+    "접수일",
+    "처리일",
+    "등록일",
+    "수정일",
+    "생성일",
+    "발생일",
+    "출발일",
+    "도착일",
+    "연월일",
+    "년월일",
+    "연월",
+    "년월",
+    "연도",
+    "년도",
+)
 
 
 def base_stem(name: str) -> str:
@@ -112,6 +160,41 @@ def is_non_unique_local_admin_reference_pair(left: ColumnProfile, right: ColumnP
 
     code_column = left if left_role[1] == "code" else right
     return not _looks_like_nationwide_official_local_admin_code(code_column, left_role[0])
+
+
+def _looks_like_time_metric(column: ColumnProfile) -> bool:
+    if TIME_METRIC_TAGS.intersection(column.semantic_tags):
+        return True
+    if TIME_METRIC_RULE_IDS.intersection(column.assigned_rules):
+        return True
+    if column.unit and any(token in column.unit for token in ("원", "건", "명", "개", "%")):
+        return True
+    return any(token in name for name in _normalized_column_names(column) for token in TIME_METRIC_NAME_TOKENS)
+
+
+def _looks_like_time_column(column: ColumnProfile) -> bool:
+    if _looks_like_time_metric(column):
+        return False
+    if "date" in column.semantic_tags or "date_domain" in column.assigned_rules:
+        return True
+    if column.inferred_primitive_type in {"date", "datetime"}:
+        return True
+    if column.date_parse_ratio is not None and column.date_parse_ratio >= 0.8:
+        return True
+    return any(token in name for name in _normalized_column_names(column) for token in TIME_LIKE_NAME_TOKENS)
+
+
+def is_explicit_time_relationship_pair(left: ColumnProfile, right: ColumnProfile) -> bool:
+    if not _looks_like_time_column(left) or not _looks_like_time_column(right):
+        return False
+
+    left_names = _normalized_column_names(left)
+    right_names = _normalized_column_names(right)
+    return any(
+        any(left_token in name for name in left_names)
+        and any(right_token in name for name in right_names)
+        for left_token, right_token in TIME_ORDER_TOKENS
+    )
 
 
 def candidate_groups(

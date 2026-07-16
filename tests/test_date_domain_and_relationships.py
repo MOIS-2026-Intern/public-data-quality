@@ -13,6 +13,31 @@ def _dataset_meta() -> DatasetMeta:
     return DatasetMeta(dataset_id="dataset", dataset_name="dataset")
 
 
+def _relationship_column(
+    name: str,
+    *,
+    semantic_tags: list[str] | None = None,
+    assigned_rules: list[str] | None = None,
+    inferred_primitive_type: str = "text",
+    sample_values: list[str] | None = None,
+    date_parse_ratio: float | None = None,
+) -> ColumnProfile:
+    values = sample_values or []
+    return ColumnProfile(
+        raw_name=name,
+        normalized_name=name,
+        source="response",
+        semantic_tags=semantic_tags or [],
+        assigned_rules=assigned_rules or [],
+        inferred_primitive_type=inferred_primitive_type,
+        non_empty_count=len(values),
+        distinct_count=len(set(values)) if values else 0,
+        sample_values=values,
+        top_values=[(value, 1) for value in values],
+        date_parse_ratio=date_parse_ratio,
+    )
+
+
 def test_date_domain_allows_day_of_month_distribution() -> None:
     values = ["27", "26", "21", "17", "18", "27", "3", "10", "23", "5"]
     column = ColumnProfile(
@@ -240,6 +265,108 @@ def test_calculation_formula_relationships_are_disabled() -> None:
     findings = validate_dataset_relationships(columns, rows, candidates)
 
     assert [finding.rule_id for finding in findings] == []
+
+
+def test_time_relationship_skips_year_to_metric_candidate() -> None:
+    columns = [
+        _relationship_column(
+            "년도",
+            semantic_tags=["date"],
+            assigned_rules=[
+                "date_domain",
+                "time_sequence_consistency",
+                "precedence_accuracy",
+            ],
+            inferred_primitive_type="numeric",
+            sample_values=["2024"],
+            date_parse_ratio=1.0,
+        ),
+        _relationship_column(
+            "보험금합계(천원)",
+            semantic_tags=["amount"],
+            assigned_rules=["amount_domain"],
+            inferred_primitive_type="numeric",
+            sample_values=["2020"],
+        ),
+    ]
+    rows = [{"년도": "2024", "보험금합계(천원)": "2020"}]
+    candidates = [
+        {
+            "rule_id": "time_sequence_consistency",
+            "columns": ["년도", "보험금합계(천원)"],
+            "confidence": 0.99,
+        }
+    ]
+
+    findings = validate_dataset_relationships(columns, rows, candidates)
+
+    assert [finding.rule_id for finding in findings] == []
+
+
+def test_time_relationship_requires_explicit_ordered_date_pair() -> None:
+    columns = [
+        _relationship_column(
+            "변경일자",
+            semantic_tags=["date"],
+            assigned_rules=["date_domain", "time_sequence_consistency"],
+            sample_values=["2017-02-21"],
+            date_parse_ratio=1.0,
+        ),
+        _relationship_column(
+            "고시일",
+            semantic_tags=["date"],
+            assigned_rules=["date_domain", "time_sequence_consistency"],
+            sample_values=["2016-12-15"],
+            date_parse_ratio=1.0,
+        ),
+    ]
+    rows = [{"변경일자": "2017-02-21", "고시일": "2016-12-15"}]
+    candidates = [
+        {
+            "rule_id": "time_sequence_consistency",
+            "columns": ["변경일자", "고시일"],
+            "confidence": 0.99,
+        }
+    ]
+
+    findings = validate_dataset_relationships(columns, rows, candidates)
+
+    assert [finding.rule_id for finding in findings] == []
+
+
+def test_time_relationship_reports_explicit_start_end_candidate() -> None:
+    columns = [
+        _relationship_column(
+            "시작일",
+            semantic_tags=["date"],
+            assigned_rules=["date_domain", "time_sequence_consistency"],
+            sample_values=["2024-02-01"],
+            date_parse_ratio=1.0,
+        ),
+        _relationship_column(
+            "종료일",
+            semantic_tags=["date"],
+            assigned_rules=["date_domain", "time_sequence_consistency"],
+            sample_values=["2024-01-31"],
+            date_parse_ratio=1.0,
+        ),
+    ]
+    rows = [{"시작일": "2024-02-01", "종료일": "2024-01-31"}]
+    candidates = [
+        {
+            "rule_id": "time_sequence_consistency",
+            "columns": ["시작일", "종료일"],
+            "confidence": 0.99,
+        }
+    ]
+
+    findings = validate_dataset_relationships(columns, rows, candidates)
+
+    assert [finding.rule_id for finding in findings] == [
+        "time_sequence_consistency",
+        "precedence_accuracy",
+    ]
+    assert findings[0].row_indexes == [1]
 
 
 def test_calculation_formula_supports_sum_of_multiple_component_columns() -> None:

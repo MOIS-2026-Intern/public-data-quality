@@ -362,6 +362,122 @@ def test_column_resolver_skips_relationship_llm_without_relationship_targets() -
     assert llm.calls == 0
 
 
+def test_column_resolver_filters_year_to_metric_time_relationships() -> None:
+    columns = [
+        ColumnProfile(
+            raw_name="년도",
+            normalized_name="년도",
+            source="response",
+            semantic_tags=["date"],
+            assigned_rules=["date_domain", "time_sequence_consistency"],
+            sample_values=["2024"],
+            top_values=[("2024", 1)],
+            inferred_primitive_type="numeric",
+            distinct_count=1,
+            non_empty_count=1,
+            date_parse_ratio=1.0,
+        ),
+        ColumnProfile(
+            raw_name="보험금합계(천원)",
+            normalized_name="보험금합계(천원)",
+            source="response",
+            semantic_tags=["amount"],
+            assigned_rules=["amount_domain"],
+            sample_values=["2020"],
+            top_values=[("2020", 1)],
+            inferred_primitive_type="numeric",
+            distinct_count=1,
+            non_empty_count=1,
+        ),
+    ]
+    resolver = LLMColumnResolver(
+        fast_llm=FakeRelationshipLLM(
+            {
+                "relationship_candidates": [
+                    {
+                        "rule_id": "time_sequence_consistency",
+                        "columns": ["년도", "보험금합계(천원)"],
+                        "confidence": 0.99,
+                        "reason": "연도와 지표 사이의 관계로 보입니다.",
+                    }
+                ]
+            }
+        )
+    )
+
+    resolved = resolver.resolve_relationships(
+        {
+            "dataset_meta": DatasetMeta(dataset_id="d", dataset_name="테스트", provider_name="기관"),
+            "columns": columns,
+        },
+        columns,
+    )
+
+    assert resolved == []
+
+
+def test_column_resolver_keeps_explicit_start_end_time_relationships() -> None:
+    columns = [
+        ColumnProfile(
+            raw_name="시작일",
+            normalized_name="시작일",
+            source="response",
+            semantic_tags=["date"],
+            assigned_rules=["date_domain", "time_sequence_consistency"],
+            sample_values=["2024-02-01"],
+            top_values=[("2024-02-01", 1)],
+            inferred_primitive_type="date",
+            distinct_count=1,
+            non_empty_count=1,
+            date_parse_ratio=1.0,
+        ),
+        ColumnProfile(
+            raw_name="종료일",
+            normalized_name="종료일",
+            source="response",
+            semantic_tags=["date"],
+            assigned_rules=["date_domain", "time_sequence_consistency"],
+            sample_values=["2024-01-31"],
+            top_values=[("2024-01-31", 1)],
+            inferred_primitive_type="date",
+            distinct_count=1,
+            non_empty_count=1,
+            date_parse_ratio=1.0,
+        ),
+    ]
+    resolver = LLMColumnResolver(
+        fast_llm=FakeRelationshipLLM(
+            {
+                "relationship_candidates": [
+                    {
+                        "rule_id": "time_sequence_consistency",
+                        "columns": ["시작일", "종료일"],
+                        "confidence": 0.99,
+                        "reason": "시작일은 종료일보다 먼저입니다.",
+                    }
+                ]
+            }
+        )
+    )
+
+    resolved = resolver.resolve_relationships(
+        {
+            "dataset_meta": DatasetMeta(dataset_id="d", dataset_name="테스트", provider_name="기관"),
+            "columns": columns,
+        },
+        columns,
+    )
+
+    assert resolved == [
+        {
+            "rule_id": "time_sequence_consistency",
+            "columns": ["시작일", "종료일"],
+            "confidence": 0.99,
+            "reason": "시작일은 종료일보다 먼저입니다.",
+        }
+    ]
+
+
 def test_column_resolver_filters_plain_eupmyeondong_reference_relationships() -> None:
     columns = [
         ColumnProfile(

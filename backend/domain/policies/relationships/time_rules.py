@@ -6,7 +6,7 @@ from backend.domain.entities.models import ColumnProfile, ValidationFinding
 from ..shared.findings import build_finding
 from ..shared.parsing import parse_datetime
 from ..shared.settings import TIME_ORDER_TOKENS
-from .common import candidate_pairs, find_matching_columns
+from .common import candidate_pairs, find_matching_columns, is_explicit_time_relationship_pair
 
 
 def validate_time_relationships(
@@ -19,6 +19,7 @@ def validate_time_relationships(
         relationship_candidates,
         {"time_sequence_consistency", "precedence_accuracy"},
         columns,
+        exact_group_size=2,
     )
     if relationship_candidates is not None:
         pairs = selected_pairs
@@ -29,6 +30,8 @@ def validate_time_relationships(
             for pair in find_matching_columns(columns, left_token, right_token)
         ]
     for left, right in pairs:
+        if not is_explicit_time_relationship_pair(left, right):
+            continue
         reversed_row_indexes: list[int] = []
         for row_index, row in enumerate(rows, start=1):
             left_value = parse_datetime(row.get(left.raw_name, ""))
