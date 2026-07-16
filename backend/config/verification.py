@@ -24,6 +24,18 @@ DETERMINISTIC_ISSUE_RULE_IDS = {
     "reference_relation",
     "address_region_prefix_mismatch",
 }
+FINAL_VERIFICATION_LOCAL_RULE_IDS = {
+    "garbled_text",
+    "whitespace_issue",
+    "special_character_issue",
+    "required_value",
+    "duplicate_data",
+    "date_domain",
+    "number_domain",
+    "boolean_domain",
+    "quantity_domain",
+    "rate_domain",
+}
 STRONG_LLM_ISSUE_RULE_IDS = {
     "boolean_domain",
     "categorical_value_out_of_domain",

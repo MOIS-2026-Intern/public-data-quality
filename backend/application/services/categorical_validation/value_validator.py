@@ -12,6 +12,10 @@ from backend.application.prompts.categorical import (
     row_context_validation_prompt,
 )
 from backend.application.shared import parse_json_content
+from backend.config.categorical import (
+    ADDRESS_DETAIL_LLM_CONFIDENCE_THRESHOLD,
+    CATEGORICAL_LLM_CONFIDENCE_THRESHOLD,
+)
 
 
 class LLMCategoricalValueValidator:
@@ -20,11 +24,9 @@ class LLMCategoricalValueValidator:
         "out_of_domain_values",
         "invalid_format_values",
         "inconsistent_format_groups",
-        "needs_manual_review",
     )
     ROW_CONTEXT_REVIEW_KEYS = (
         "row_context_issues",
-        "row_context_manual_reviews",
     )
     ADDRESS_DETAIL_REVIEW_KEYS = ("address_detail_issues",)
 
@@ -77,6 +79,7 @@ class LLMCategoricalValueValidator:
         system_prompt: str,
         review_keys: tuple[str, ...],
         prefer_strong: bool = False,
+        strong_threshold: float = CATEGORICAL_LLM_CONFIDENCE_THRESHOLD,
     ) -> dict[str, Any] | None:
         if prefer_strong and self._strong_enabled:
             strong_payload = self._invoke_json_payload_once(
@@ -95,7 +98,11 @@ class LLMCategoricalValueValidator:
             prompt,
             system_prompt=system_prompt,
         )
-        if fast_payload is not None and not self._payload_needs_strong(fast_payload, review_keys):
+        if fast_payload is not None and not self._payload_needs_strong(
+            fast_payload,
+            review_keys,
+            strong_threshold=strong_threshold,
+        ):
             return fast_payload
 
         if self._strong_enabled:
@@ -137,8 +144,26 @@ class LLMCategoricalValueValidator:
         return payload
 
     @staticmethod
-    def _payload_needs_strong(payload: dict[str, Any], review_keys: tuple[str, ...]) -> bool:
-        return any(isinstance(payload.get(key), list) and bool(payload.get(key)) for key in review_keys)
+    def _payload_needs_strong(
+        payload: dict[str, Any],
+        review_keys: tuple[str, ...],
+        *,
+        strong_threshold: float,
+    ) -> bool:
+        for key in review_keys:
+            items = payload.get(key)
+            if not isinstance(items, list):
+                continue
+            for item in items:
+                if not isinstance(item, dict):
+                    continue
+                try:
+                    confidence = float(item.get("confidence") or 0.0)
+                except (TypeError, ValueError):
+                    confidence = 0.0
+                if confidence >= strong_threshold:
+                    return True
+        return False
 
     def validate(
         self,
@@ -177,7 +202,6 @@ class LLMCategoricalValueValidator:
         payload.setdefault("out_of_domain_values", [])
         payload.setdefault("invalid_format_values", [])
         payload.setdefault("inconsistent_format_groups", [])
-        payload.setdefault("needs_manual_review", [])
         payload.setdefault("overall_confidence", 0.0)
         return payload
 
@@ -202,12 +226,11 @@ class LLMCategoricalValueValidator:
             ),
             system_prompt=ROW_CONTEXT_SYSTEM_PROMPT,
             review_keys=self.ROW_CONTEXT_REVIEW_KEYS,
-            prefer_strong=True,
+            prefer_strong=False,
         )
         if payload is None:
             return None
         payload.setdefault("row_context_issues", [])
-        payload.setdefault("row_context_manual_reviews", [])
         payload.setdefault("overall_confidence", 0.0)
         return payload
 
@@ -234,7 +257,8 @@ class LLMCategoricalValueValidator:
             ),
             system_prompt=ADDRESS_DETAIL_SYSTEM_PROMPT,
             review_keys=self.ADDRESS_DETAIL_REVIEW_KEYS,
-            prefer_strong=True,
+            prefer_strong=False,
+            strong_threshold=ADDRESS_DETAIL_LLM_CONFIDENCE_THRESHOLD,
         )
         if payload is None:
             return None

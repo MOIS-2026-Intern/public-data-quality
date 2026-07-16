@@ -9,36 +9,54 @@ from backend.config.llm import LLM_DEFAULT_MODEL, OPENAI_DEFAULT_API_URL
 from backend.infrastructure.llm.client import ChatLLMClient
 
 
+def _clear_connection_pool() -> None:
+    pool = getattr(ChatLLMClient._connections, "pool", {})
+    for connection in pool.values():
+        connection.close()
+    ChatLLMClient._connections.pool = {}
+
+
 def test_chat_llm_client_uses_bizrouter_defaults_and_chat_completions_payload(monkeypatch) -> None:
     ChatLLMClient.clear_cache()
+    _clear_connection_pool()
     captured: dict[str, object] = {}
 
     class FakeResponse:
-        def __enter__(self):
-            return self
+        status = 200
+        reason = "OK"
 
-        def __exit__(self, exc_type, exc, tb):
-            return False
+        def getheader(self, name, default=""):
+            return default
 
         def read(self) -> bytes:
             return json.dumps({"choices": [{"message": {"content": "ok"}}]}).encode("utf-8")
 
-    def fake_urlopen(request, timeout):
-        captured["url"] = request.full_url
-        captured["method"] = request.get_method()
-        captured["authorization"] = request.get_header("Authorization")
-        captured["content_type"] = request.get_header("Content-type")
-        captured["payload"] = json.loads(request.data.decode("utf-8"))
-        captured["timeout"] = timeout
-        return FakeResponse()
+    class FakeHTTPSConnection:
+        def __init__(self, host, timeout):
+            captured["host"] = host
+            captured["timeout"] = timeout
 
-    monkeypatch.setattr(client_module, "urlopen", fake_urlopen)
+        def request(self, method, target, body, headers):
+            captured["method"] = method
+            captured["target"] = target
+            captured["authorization"] = headers["Authorization"]
+            captured["content_type"] = headers["Content-Type"]
+            captured["payload"] = json.loads(body.decode("utf-8"))
+
+        def getresponse(self):
+            return FakeResponse()
+
+        def close(self):
+            captured["closed"] = True
+
+    monkeypatch.setattr(client_module.http.client, "HTTPSConnection", FakeHTTPSConnection)
 
     response = ChatLLMClient(api_key="sk-br-v1-test").invoke_json("hello", system_prompt="system")
 
     assert response is not None
     assert response.content == "ok"
-    assert captured["url"] == OPENAI_DEFAULT_API_URL
+    assert OPENAI_DEFAULT_API_URL.endswith(captured["target"])
+    assert captured["host"] == "api.bizrouter.ai"
     assert captured["method"] == "POST"
     assert captured["authorization"] == "Bearer sk-br-v1-test"
     assert captured["content_type"] == "application/json"
@@ -71,24 +89,34 @@ def test_chat_llm_client_accepts_bizrouter_environment_variables(monkeypatch) ->
 
 def test_chat_llm_client_caches_successful_responses(monkeypatch) -> None:
     ChatLLMClient.clear_cache()
+    _clear_connection_pool()
     call_count = 0
 
     class FakeResponse:
-        def __enter__(self):
-            return self
+        status = 200
+        reason = "OK"
 
-        def __exit__(self, exc_type, exc, tb):
-            return False
+        def getheader(self, name, default=""):
+            return default
 
         def read(self) -> bytes:
             return json.dumps({"choices": [{"message": {"content": "cached"}}]}).encode("utf-8")
 
-    def fake_urlopen(request, timeout):
-        nonlocal call_count
-        call_count += 1
-        return FakeResponse()
+    class FakeHTTPSConnection:
+        def __init__(self, host, timeout):
+            pass
 
-    monkeypatch.setattr(client_module, "urlopen", fake_urlopen)
+        def request(self, method, target, body, headers):
+            nonlocal call_count
+            call_count += 1
+
+        def getresponse(self):
+            return FakeResponse()
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr(client_module.http.client, "HTTPSConnection", FakeHTTPSConnection)
 
     client = ChatLLMClient(api_key="sk-br-v1-test")
     first = client.invoke_json("same prompt", system_prompt="system")

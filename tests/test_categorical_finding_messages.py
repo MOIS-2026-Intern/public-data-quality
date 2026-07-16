@@ -8,7 +8,7 @@ from backend.application.services.categorical_validation.row_context_results imp
 from backend.domain.entities.models import ColumnProfile
 
 
-def test_date_format_inconsistent_flags_non_representative_format_only() -> None:
+def test_date_format_inconsistent_result_is_ignored() -> None:
     column = ColumnProfile(
         raw_name="데이터기준일자",
         normalized_name="데이터기준일자",
@@ -52,11 +52,8 @@ def test_date_format_inconsistent_flags_non_representative_format_only() -> None
         findings=findings,
     )
 
-    assert generated == 1
-    assert findings[0].rule_id == "date_format_inconsistent"
-    assert findings[0].row_indexes == [6]
-    assert "26.2.1." in findings[0].message
-    assert "2026-02-01" not in findings[0].message
+    assert generated == 0
+    assert findings == []
 
 
 def test_llm_categorical_truncated_text_findings_are_ignored_for_names() -> None:
@@ -103,7 +100,7 @@ def test_llm_categorical_truncated_text_findings_are_ignored_for_names() -> None
     assert findings == []
 
 
-def test_row_context_manual_review_message_includes_value_and_reason() -> None:
+def test_row_context_manual_review_result_is_ignored() -> None:
     rows = [{"위험요인": "불법주정차빈??"}]
     columns = [{"raw_name": "위험요인", "normalized_name": "위험요인"}]
     result = {
@@ -131,10 +128,8 @@ def test_row_context_manual_review_message_includes_value_and_reason() -> None:
     )
 
     assert generated == 0
-    assert manual_generated == 1
-    assert findings[0].rule_id == "row_context_manual_review"
-    assert "불법주정차빈??" in findings[0].message
-    assert "깨진 문자 ??" in findings[0].message
+    assert manual_generated == 0
+    assert findings == []
 
 
 def test_row_context_manual_review_skips_when_total_matches_multiple_components() -> None:
@@ -186,7 +181,7 @@ def test_row_context_manual_review_skips_when_total_matches_multiple_components(
     assert findings == []
 
 
-def test_row_context_manual_review_keeps_when_total_mismatches_multiple_components() -> None:
+def test_row_context_manual_review_ignores_total_mismatch_manual_review() -> None:
     rows = [
         {
             "지급건수합계(건)": "20",
@@ -231,8 +226,8 @@ def test_row_context_manual_review_keeps_when_total_mismatches_multiple_componen
     )
 
     assert generated == 0
-    assert manual_generated == 1
-    assert findings[0].rule_id == "row_context_manual_review"
+    assert manual_generated == 0
+    assert findings == []
 
 
 def test_row_context_manual_review_skips_uniqueness_only_message() -> None:

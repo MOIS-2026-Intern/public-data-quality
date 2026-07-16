@@ -21,7 +21,7 @@ def test_severity_is_derived_from_rule_id() -> None:
     assert finding.finding_type == "issue"
 
 
-def test_manual_review_rule_ids_are_info() -> None:
+def test_non_whitespace_manual_review_rule_id_is_not_special_cased() -> None:
     finding = build_finding(
         column_name="미분류컬럼",
         severity="warning",
@@ -29,10 +29,11 @@ def test_manual_review_rule_ids_are_info() -> None:
         criterion_name="required_value",
         rule_id="manual_review_required",
         message="검증 규칙이 할당되지 않아 수동 검토가 필요합니다.",
+        row_indexes=[1],
     )
 
-    assert finding.severity == "info"
-    assert finding.finding_type == "manual_review"
+    assert finding.severity == "warning"
+    assert finding.finding_type == "issue"
 
 
 def test_whitespace_manual_review_rule_is_info() -> None:

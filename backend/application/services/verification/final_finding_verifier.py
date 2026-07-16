@@ -5,6 +5,7 @@ from typing import Any
 
 from backend.application.shared import parse_json_content
 from backend.config.verification import (
+    FINAL_VERIFICATION_LOCAL_RULE_IDS,
     FINAL_VERIFICATION_CONFIDENCE_THRESHOLD,
     MAX_FINAL_VERIFICATION_CANDIDATES,
     MAX_FINAL_VERIFICATION_ROWS_PER_FINDING,
@@ -88,7 +89,7 @@ def _finding_candidates(
 
 
 def _skip_llm_final_verification(finding: ValidationFinding) -> bool:
-    return _is_protected_deterministic_issue(finding)
+    return _is_protected_deterministic_issue(finding) or _is_local_final_verification_issue(finding)
 
 
 def _group_candidates(candidates: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -204,9 +205,41 @@ def _is_protected_deterministic_issue(finding: ValidationFinding) -> bool:
     )
 
 
+def _is_local_final_verification_issue(finding: ValidationFinding) -> bool:
+    if finding.rule_id not in FINAL_VERIFICATION_LOCAL_RULE_IDS:
+        return False
+    evidence = finding.evidence or []
+    return not any(item.startswith("detector:llm_") or item.startswith("stage:") for item in evidence)
+
+
 def _apply_protected_final_verification(finding: ValidationFinding) -> ValidationFinding:
     evidence = [*finding.evidence, "final_verifier:deterministic_institution_suffix"]
     return finding.model_copy(update={"evidence": list(dict.fromkeys(evidence))})
+
+
+def _apply_local_final_verification(finding: ValidationFinding) -> ValidationFinding:
+    evidence = [*finding.evidence, "final_verifier:local_rule"]
+    return finding.model_copy(
+        update={
+            "llm_final_verification": _local_final_verification_reason(finding.rule_id),
+            "evidence": list(dict.fromkeys(evidence)),
+        }
+    )
+
+
+def _local_final_verification_reason(rule_id: str) -> str:
+    reasons = {
+        "garbled_text": "로컬 규칙에서 깨진 문자 또는 비정상 텍스트가 확인되었습니다.",
+        "whitespace_issue": "로컬 규칙에서 과도한 공백 또는 공백 불일치가 확인되었습니다.",
+        "special_character_issue": "로컬 규칙에서 허용 범위를 벗어난 특수문자가 확인되었습니다.",
+        "required_value": "로컬 규칙에서 필수성이 높은 컬럼의 결측값이 확인되었습니다.",
+        "duplicate_data": "로컬 규칙에서 중복 식별자 값이 확인되었습니다.",
+        "number_domain": "로컬 규칙에서 번호 또는 숫자 도메인 범위 오류가 확인되었습니다.",
+        "boolean_domain": "로컬 규칙에서 여부 도메인의 허용값 범위 이탈이 확인되었습니다.",
+        "quantity_domain": "로컬 규칙에서 수량 도메인의 숫자 파싱 또는 범위 오류가 확인되었습니다.",
+        "rate_domain": "로컬 규칙에서 율 도메인의 허용 범위 이탈이 확인되었습니다.",
+    }
+    return reasons.get(rule_id, "로컬 규칙에서 확정 가능한 오류가 확인되었습니다.")
 
 
 def _apply_final_verification(

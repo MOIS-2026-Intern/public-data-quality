@@ -155,7 +155,7 @@ def test_categorical_value_validation_uses_fast_model_when_no_review_items() -> 
     assert strong_llm.calls == 0
 
 
-def test_categorical_value_validation_escalates_review_items_to_strong_model() -> None:
+def test_categorical_value_validation_does_not_escalate_low_confidence_review_items() -> None:
     fast_llm = _FakeJsonLLM(
         model_name="fast",
         payload={
@@ -179,7 +179,82 @@ def test_categorical_value_validation_escalates_review_items_to_strong_model() -
         values=[{"value": "이상값", "count": 1}],
     )
 
+    assert result["_llm_stage"] == "fast"
+    assert result["_llm_escalated"] is False
+    assert fast_llm.calls == 1
+    assert strong_llm.calls == 0
+
+
+def test_categorical_value_validation_escalates_high_confidence_review_items_to_strong_model() -> None:
+    fast_llm = _FakeJsonLLM(
+        model_name="fast",
+        payload={
+            "domain_label": "범주",
+            "overall_confidence": 0.95,
+            "out_of_domain_values": [{"value": "이상값", "confidence": 0.95}],
+        },
+    )
+    strong_llm = _FakeJsonLLM(
+        model_name="strong",
+        payload={"domain_label": "범주", "overall_confidence": 0.95},
+    )
+
+    result = LLMCategoricalValueValidator(fast_llm=fast_llm, strong_llm=strong_llm).validate(
+        dataset_name="테스트",
+        provider_name="기관",
+        column_name="구분",
+        standard_candidate=None,
+        semantic_tags=["enum"],
+        format_kind="fixed_format",
+        values=[{"value": "이상값", "count": 1}],
+    )
+
     assert result["_llm_stage"] == "strong"
     assert result["_llm_escalated"] is True
     assert fast_llm.calls == 1
     assert strong_llm.calls == 1
+
+
+def test_row_context_validation_uses_fast_model_when_no_issues() -> None:
+    fast_llm = _FakeJsonLLM(
+        model_name="fast",
+        payload={"row_context_issues": [], "overall_confidence": 0.2},
+    )
+    strong_llm = _FakeJsonLLM(
+        model_name="strong",
+        payload={"row_context_issues": [], "overall_confidence": 0.2},
+    )
+
+    result = LLMCategoricalValueValidator(fast_llm=fast_llm, strong_llm=strong_llm).validate_row_context(
+        dataset_name="테스트",
+        provider_name="기관",
+        columns=[{"raw_name": "구분", "normalized_name": "구분"}],
+        rows=[{"구분": "정상"}],
+    )
+
+    assert result["_llm_stage"] == "fast"
+    assert fast_llm.calls == 1
+    assert strong_llm.calls == 0
+
+
+def test_address_detail_validation_uses_fast_model_when_no_issues() -> None:
+    fast_llm = _FakeJsonLLM(
+        model_name="fast",
+        payload={"address_detail_issues": [], "overall_confidence": 0.2},
+    )
+    strong_llm = _FakeJsonLLM(
+        model_name="strong",
+        payload={"address_detail_issues": [], "overall_confidence": 0.2},
+    )
+
+    result = LLMCategoricalValueValidator(fast_llm=fast_llm, strong_llm=strong_llm).validate_address_detail_candidates(
+        dataset_name="테스트",
+        provider_name="기관",
+        column_name="상세주소",
+        related_columns=["주소"],
+        candidates=[{"row_index": 1, "column_name": "상세주소", "value": "2층"}],
+    )
+
+    assert result["_llm_stage"] == "fast"
+    assert fast_llm.calls == 1
+    assert strong_llm.calls == 0

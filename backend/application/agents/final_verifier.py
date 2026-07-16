@@ -15,9 +15,11 @@ from backend.application.services.verification.final_finding_verifier import (
     LLMFinalFindingVerifier,
     MAX_FINAL_VERIFICATION_CANDIDATES,
     _apply_final_verification,
+    _apply_local_final_verification,
     _apply_protected_final_verification,
     _finding_candidates,
     _group_candidates,
+    _is_local_final_verification_issue,
     _is_protected_deterministic_issue,
     _keeps_issue,
     _occurrence_count,
@@ -31,6 +33,8 @@ def _apply_protected_deterministic_findings(findings: list[ValidationFinding]) -
     return [
         _apply_protected_final_verification(finding)
         if finding.finding_type == "issue" and finding.row_indexes and _is_protected_deterministic_issue(finding)
+        else _apply_local_final_verification(finding)
+        if finding.finding_type == "issue" and finding.row_indexes and _is_local_final_verification_issue(finding)
         else finding
         for finding in findings
     ]
@@ -134,6 +138,10 @@ class FinalFindingVerificationAgent(BaseAgent):
 
             if _is_protected_deterministic_issue(finding):
                 verified_findings.append(_apply_protected_final_verification(finding))
+                continue
+
+            if _is_local_final_verification_issue(finding):
+                verified_findings.append(_apply_local_final_verification(finding))
                 continue
 
             decision = decisions_by_finding_id.get(f"f{index}")

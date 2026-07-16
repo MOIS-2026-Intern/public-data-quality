@@ -38,7 +38,7 @@ def test_local_sido_spacing_variant_under_five_percent_is_ignored() -> None:
         findings=findings,
     )
 
-    assert counts.normalization_count == 0
+    assert counts.has_findings is False
     assert findings == []
 
 
@@ -103,7 +103,7 @@ def test_row_context_sido_spacing_manual_review_under_five_percent_is_ignored() 
     assert findings == []
 
 
-def test_local_sido_spacing_variants_overall_ratio_over_five_percent_are_not_ignored() -> None:
+def test_local_sido_spacing_variants_do_not_create_manual_review_findings() -> None:
     column = ColumnProfile(
         raw_name="시도",
         normalized_name="시도",
@@ -133,14 +133,10 @@ def test_local_sido_spacing_variants_overall_ratio_over_five_percent_are_not_ign
         findings=findings,
     )
 
-    assert {finding.message for finding in findings} == {
-        "'서 울' 값은 '서울'로 표면 형식을 표준화하는 것이 적절합니다.",
-        "'충 북' 값은 '충북'로 표면 형식을 표준화하는 것이 적절합니다.",
-        "'경 남' 값은 '경남'로 표면 형식을 표준화하는 것이 적절합니다.",
-    }
+    assert findings == []
 
 
-def test_local_sido_spacing_variant_counts_follow_emitted_findings() -> None:
+def test_local_sido_spacing_variant_counts_do_not_include_manual_review_findings() -> None:
     column = ColumnProfile(
         raw_name="시도",
         normalized_name="시도",
@@ -170,9 +166,8 @@ def test_local_sido_spacing_variant_counts_follow_emitted_findings() -> None:
         findings=findings,
     )
 
-    assert counts.normalization_count == 3
-    assert counts.has_findings is True
-    assert len(findings) == 3
+    assert counts.has_findings is False
+    assert findings == []
 
 
 def test_looks_sido_column_does_not_match_attempt_count_columns() -> None:
@@ -192,7 +187,7 @@ def test_looks_sido_column_does_not_match_attempt_count_columns() -> None:
     assert looks_sido_column(column) is False
 
 
-def test_llm_sido_spacing_manual_reviews_overall_ratio_over_five_percent_are_not_ignored() -> None:
+def test_llm_sido_spacing_manual_reviews_are_ignored() -> None:
     column = ColumnProfile(
         raw_name="시도",
         normalized_name="시도",
@@ -230,11 +225,8 @@ def test_llm_sido_spacing_manual_reviews_overall_ratio_over_five_percent_are_not
         findings=findings,
     )
 
-    assert generated == 2
-    assert [finding.message for finding in findings] == [
-        "'서 울' 값은 의미 판정이 애매해 수동 검토가 필요합니다.",
-        "'충 북' 값은 의미 판정이 애매해 수동 검토가 필요합니다.",
-    ]
+    assert generated == 0
+    assert findings == []
 
 
 def test_llm_sido_spacing_manual_reviews_are_ignored_when_column_uses_only_spaced_style() -> None:

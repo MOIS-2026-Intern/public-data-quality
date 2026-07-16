@@ -10,7 +10,7 @@ from backend.config.column_rules import (
 from backend.domain.entities.models import ValidationFinding
 
 from .context import ColumnRuleContext
-from .free_text import looks_free_text_column
+from .free_text import is_free_format_column
 from .helpers import (
     duplicate_value_row_indexes,
     is_likely_required,
@@ -23,6 +23,7 @@ from ..shared.text_checks import (
     contains_broken_text,
     describe_minor_whitespace_issue,
     has_special_char_issue,
+    has_terminal_punctuation_fragment,
     has_strong_whitespace_issue,
     has_whitespace_issue,
 )
@@ -136,8 +137,11 @@ def _minor_whitespace_value_message(value: str) -> str:
 
 def find_special_character_issues(context: ColumnRuleContext) -> list[ValidationFinding]:
     column = context.column
-    has_value_issue = any(has_special_char_issue(value) for value in context.sample_values)
-    if not (has_special_char_issue(column.raw_name) or has_value_issue):
+    has_value_issue = any(
+        _has_value_special_character_issue(column, value)
+        for value in context.sample_values
+    )
+    if not (_has_column_special_character_issue(column.raw_name) or has_value_issue):
         return []
 
     return [
@@ -153,12 +157,26 @@ def find_special_character_issues(context: ColumnRuleContext) -> list[Validation
             row_indexes=matching_row_indexes(
                 context.rows,
                 column.raw_name,
-                has_special_char_issue,
+                lambda value: _has_value_special_character_issue(column, value),
                 strip_value=False,
             ),
-            evidence=[value for value in context.sample_values if has_special_char_issue(value)][:3],
+            evidence=[
+                value
+                for value in context.sample_values
+                if _has_value_special_character_issue(column, value)
+            ][:3],
         )
     ]
+
+
+def _has_column_special_character_issue(value: str) -> bool:
+    return has_special_char_issue(value) or has_terminal_punctuation_fragment(value)
+
+
+def _has_value_special_character_issue(column, value: str) -> bool:
+    if has_special_char_issue(value):
+        return True
+    return not is_free_format_column(column) and has_terminal_punctuation_fragment(value)
 
 
 def find_truncated_address(context: ColumnRuleContext) -> list[ValidationFinding]:
@@ -192,22 +210,7 @@ def find_truncated_address(context: ColumnRuleContext) -> list[ValidationFinding
 
 
 def find_missing_assigned_rules(context: ColumnRuleContext) -> list[ValidationFinding]:
-    column = context.column
-    if column.assigned_rules:
-        return []
-    if looks_free_text_column(column):
-        return []
-
-    return [
-        build_finding(
-            column_name=column.raw_name,
-            severity="warning",
-            category_group="completeness",
-            criterion_name="required_value",
-            message="검증 규칙이 할당되지 않아 수동 검토가 필요합니다.",
-            rule_id="manual_review_required",
-        )
-    ]
+    return []
 
 
 def find_required_nulls(context: ColumnRuleContext) -> list[ValidationFinding]:

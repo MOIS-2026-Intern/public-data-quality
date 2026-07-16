@@ -49,3 +49,28 @@ def test_build_agents_uses_bizrouter_default_models_when_request_models_are_miss
     agents_module.build_agents(PipelineExecutionRequest(use_llm_agents=True, openai_api_key="sk-br-v1-test"))
 
     assert model_names == [LLM_FAST_MODEL, LLM_STRONG_MODEL]
+
+
+def test_build_agents_applies_single_request_model_to_fast_and_strong(monkeypatch) -> None:
+    model_names: list[str] = []
+
+    class FakeClient:
+        def __init__(self, *args, **kwargs):
+            model_names.append(kwargs.get("model_name", ""))
+            self.model_name = kwargs.get("model_name", "")
+            self.enabled = True
+            self.last_error = ""
+            self.last_response_preview = ""
+
+    monkeypatch.setattr(agents_module, "ensure_runtime_environment", lambda: None)
+    monkeypatch.setattr(agents_module, "ChatLLMClient", FakeClient)
+
+    agents_module.build_agents(
+        PipelineExecutionRequest(
+            use_llm_agents=True,
+            openai_api_key="sk-br-v1-test",
+            llm_model="openai/gpt-5-nano",
+        )
+    )
+
+    assert model_names == ["openai/gpt-5-nano", "openai/gpt-5-nano"]

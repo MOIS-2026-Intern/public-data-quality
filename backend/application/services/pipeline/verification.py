@@ -142,7 +142,7 @@ def _is_final_issue_candidate(finding) -> bool:
 
 
 def _is_final_manual_review_candidate(finding) -> bool:
-    return bool(finding.row_indexes) or finding.rule_id == "manual_review_required"
+    return finding.rule_id == "whitespace_manual_review"
 
 
 def _is_deterministic_issue(finding) -> bool:

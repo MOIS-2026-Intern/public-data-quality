@@ -3,6 +3,7 @@ from __future__ import annotations
 import re
 
 _SUSPICIOUS_SYMBOL_RE = re.compile(r"[�]|[ㄱ-ㅎㅏ-ㅣ]{2,}|[?!]{2,}|[#@$%^*_={}|\\]{3,}")
+_TERMINAL_PUNCTUATION_FRAGMENT_RE = re.compile(r"[가-힣A-Za-z0-9][?！!]\s*$")
 _BROKEN_TEXT_RE = re.compile(r"[�]|[ㄱ-ㅎㅏ-ㅣ]{2,}")
 _PHONE_DIGIT_RE = re.compile(r"^[0-9+\-() ]+$")
 _MULTI_WHITESPACE_RE = re.compile(r"\s{2,}")
@@ -73,6 +74,10 @@ def describe_minor_whitespace_issue(value: str) -> list[str]:
 
 def has_special_char_issue(value: str) -> bool:
     return bool(_SUSPICIOUS_SYMBOL_RE.search(value))
+
+
+def has_terminal_punctuation_fragment(value: str) -> bool:
+    return bool(_TERMINAL_PUNCTUATION_FRAGMENT_RE.search(value or ""))
 
 
 def looks_phone_number_text(value: str) -> bool:

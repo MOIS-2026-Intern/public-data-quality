@@ -14,20 +14,10 @@ DATE_PATTERNS = (
     "%Y%m%d%H%M%S",
 )
 MANUAL_REVIEW_RULE_IDS = {
-    "manual_review_required",
-    "categorical_value_manual_review",
-    "categorical_value_normalization",
     "whitespace_manual_review",
-    "date_format_inconsistent",
-    "row_context_manual_review",
 }
 RULE_SEVERITY_BY_RULE_ID = {
-    "manual_review_required": "info",
-    "categorical_value_manual_review": "info",
-    "categorical_value_normalization": "info",
     "whitespace_manual_review": "info",
-    "date_format_inconsistent": "info",
-    "row_context_manual_review": "info",
     "garbled_text": "error",
     "whitespace_issue": "warning",
     "special_character_issue": "warning",

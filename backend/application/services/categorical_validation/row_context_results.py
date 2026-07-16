@@ -1,24 +1,17 @@
 from __future__ import annotations
 
 from collections import Counter
-import re
 from typing import Any
 
 from backend.config.categorical import (
     CATEGORICAL_LLM_CONFIDENCE_THRESHOLD,
-    ROW_CONTEXT_GENERIC_VALUE_REVIEW_PATTERN,
-    ROW_CONTEXT_MANUAL_REVIEW_MIN_CONFIDENCE,
-    ROW_CONTEXT_STYLE_MARKERS,
     ROW_CONTEXT_SUM_MISMATCH_MARKERS,
-    ROW_CONTEXT_UNIQUENESS_MARKERS,
 )
 from backend.domain.entities.models import ValidationFinding
 from backend.domain.policies.categorical import finding_key
 from backend.domain.policies.categorical.column import (
     is_low_ratio_sido_spacing_variant,
     is_public_private_category_value,
-    is_sido_spacing_variant_text,
-    looks_sido_column,
 )
 from backend.domain.policies.categorical.text import clean_reason_text, is_specific_row_context_reason
 from backend.domain.policies.relationships.calculation_rules import (
@@ -26,10 +19,6 @@ from backend.domain.policies.relationships.calculation_rules import (
     row_total_matches_components,
 )
 from backend.domain.policies.shared.findings import build_finding
-
-_ROW_CONTEXT_GENERIC_VALUE_REVIEW_RE = re.compile(
-    ROW_CONTEXT_GENERIC_VALUE_REVIEW_PATTERN
-)
 
 
 def append_row_context_findings(
@@ -56,16 +45,7 @@ def append_row_context_findings(
         columns_by_name=columns_by_name,
         column_counters=column_counters,
     )
-    manual_generated = _append_row_context_manual_reviews(
-        result=result,
-        rows=rows,
-        findings=findings,
-        existing_finding_keys=existing_finding_keys,
-        header_aliases=header_aliases,
-        columns_by_name=columns_by_name,
-        column_counters=column_counters,
-    )
-    return generated, manual_generated
+    return generated, 0
 
 
 def _header_aliases(columns: list[dict[str, Any]]) -> dict[str, str]:
@@ -158,195 +138,6 @@ def _append_row_context_issues(
             existing_finding_keys.add(key)
             generated += 1
     return generated
-
-
-def _append_row_context_manual_reviews(
-    *,
-    result: dict[str, Any],
-    rows: list[dict[str, str]],
-    findings: list[ValidationFinding],
-    existing_finding_keys: set[tuple[str, str, str, tuple[int, ...]]],
-    header_aliases: dict[str, str],
-    columns_by_name: dict[str, dict[str, Any]],
-    column_counters: dict[str, Counter[str]],
-) -> int:
-    generated = 0
-    for item in result.get("row_context_manual_reviews", []):
-        parsed = _parse_row_context_item(item, rows, header_aliases)
-        if parsed is None:
-            continue
-        row_index, column_name = parsed
-        value = str(rows[row_index - 1].get(column_name, "") or "").strip()
-        if is_low_ratio_sido_spacing_variant(
-            columns_by_name.get(column_name, {"raw_name": column_name, "normalized_name": column_name}),
-            value,
-            column_counters.get(column_name, Counter()),
-        ):
-            continue
-        confidence = float(item.get("confidence") or 0.0)
-        if (
-            confidence < ROW_CONTEXT_MANUAL_REVIEW_MIN_CONFIDENCE
-            or confidence >= CATEGORICAL_LLM_CONFIDENCE_THRESHOLD
-        ):
-            continue
-        related_columns = _related_columns(item, header_aliases)
-        if column_name not in related_columns:
-            related_columns.insert(0, column_name)
-        reason = _manual_review_text(item.get("reason"))
-        message = _row_context_manual_review_message(
-            item=item,
-            rows=rows,
-            row_index=row_index,
-            column_name=column_name,
-            reason=reason,
-        )
-        if _skip_non_actionable_manual_review(
-            column=columns_by_name.get(
-                column_name,
-                {"raw_name": column_name, "normalized_name": column_name},
-            ),
-            value=value,
-            rows=rows,
-            row_index=row_index,
-            message=message,
-            reason=reason,
-            related_columns=related_columns,
-        ):
-            continue
-        evidence = [
-            f"confidence:{confidence:.2f}",
-            f"model:{result.get('_llm_model', '')}",
-            f"stage:{result.get('_llm_stage', '')}",
-            f"escalated:{bool(result.get('_llm_escalated'))}",
-            "detector:llm_row_context_manual_review",
-        ]
-        if reason:
-            evidence.append(f"reason:{reason}")
-        finding = build_finding(
-            column_name=column_name,
-            severity="info",
-            finding_type="manual_review",
-            category_group="relation_consistency",
-            criterion_name="logical_consistency",
-            rule_id="row_context_manual_review",
-            message=message,
-            row_indexes=[row_index],
-            related_columns=related_columns,
-            evidence=evidence,
-        )
-        key = finding_key(finding)
-        if key not in existing_finding_keys:
-            findings.append(finding)
-            existing_finding_keys.add(key)
-            generated += 1
-    return generated
-
-
-def _manual_review_text(value: Any) -> str:
-    cleaned = clean_reason_text(value)
-    if cleaned:
-        return cleaned
-
-    text = " ".join(str(value or "").split())
-    lowered = text.lower()
-    if not text or len(text) > 300:
-        return ""
-    if any(token in lowered for token in ("lorem", "asdf", "n/a", "unknown")):
-        return ""
-    return text
-
-
-def _row_context_manual_review_message(
-    *,
-    item: dict[str, Any],
-    rows: list[dict[str, str]],
-    row_index: int,
-    column_name: str,
-    reason: str,
-) -> str:
-    message = _manual_review_text(item.get("message"))
-    generic_messages = {
-        f"'{column_name}' 값은 행 문맥상 수동 검토가 필요합니다.",
-        "행 문맥상 수동 검토가 필요합니다.",
-        "수동 검토가 필요합니다.",
-    }
-    if message and message not in generic_messages:
-        return message
-
-    value = ""
-    if 0 < row_index <= len(rows):
-        value = str(rows[row_index - 1].get(column_name, "") or "").strip()
-    target = f"'{value}' 값" if value else f"'{column_name}' 값"
-    if reason:
-        return f"{target}은 행 문맥상 수동 검토가 필요합니다: {reason}"
-    return f"{target}은 행 문맥상 수동 검토가 필요합니다."
-
-
-def _skip_non_actionable_manual_review(
-    *,
-    column: dict[str, Any],
-    value: str,
-    rows: list[dict[str, str]],
-    row_index: int,
-    message: str,
-    reason: str,
-    related_columns: list[str],
-) -> bool:
-    lowered_text = f"{message} {reason}".lower()
-    if any(marker in lowered_text for marker in ROW_CONTEXT_UNIQUENESS_MARKERS):
-        return True
-    if _is_generic_value_only_manual_review(
-        column_name=str(column.get("raw_name") or ""),
-        value=value,
-        message=message,
-        reason=reason,
-    ):
-        return True
-    if (
-        looks_sido_column(column)
-        and is_sido_spacing_variant_text(value)
-        and len(set(related_columns)) < 2
-    ):
-        return True
-    if (
-        looks_sido_column(column)
-        and is_sido_spacing_variant_text(value)
-        and any(marker in lowered_text for marker in ROW_CONTEXT_STYLE_MARKERS)
-    ):
-        return True
-    if _skip_verified_sum_match(
-        rows=rows,
-        row_index=row_index,
-        column_name=str(column.get("raw_name") or ""),
-        related_columns=related_columns,
-        message=message,
-        reason=reason,
-    ):
-        return True
-    return False
-
-
-def _is_generic_value_only_manual_review(
-    *,
-    column_name: str,
-    value: str,
-    message: str,
-    reason: str,
-) -> bool:
-    if reason:
-        return False
-
-    normalized_message = " ".join(str(message or "").split())
-    if not normalized_message:
-        return False
-
-    match = _ROW_CONTEXT_GENERIC_VALUE_REVIEW_RE.fullmatch(normalized_message)
-    if match is None:
-        return False
-
-    message_column = match.group("column").strip()
-    message_value = match.group("value").strip()
-    return message_column == column_name.strip() and message_value == value.strip()
 
 
 def _skip_verified_sum_match(

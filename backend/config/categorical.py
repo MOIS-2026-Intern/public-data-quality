@@ -140,25 +140,6 @@ ROW_CONTEXT_SIGNAL_SCORES = {
     "default": {ROW_CONTEXT_UNIQUE_VALUE_COUNT: 30, ROW_CONTEXT_RARE_VALUE_COUNT: 20},
 }
 ROW_CONTEXT_EARLY_SAMPLE_REASON = "early sample row"
-ROW_CONTEXT_MANUAL_REVIEW_MIN_CONFIDENCE = 0.50
-ROW_CONTEXT_UNIQUENESS_MARKERS = (
-    "유일한 값",
-    "고유한 값",
-    "희귀",
-    "드문 값",
-    "흔하지 않은",
-    "특이",
-    "unique",
-    "rare",
-    "unusual",
-)
-ROW_CONTEXT_STYLE_MARKERS = (
-    "띄어쓰기",
-    "공백",
-    "표기",
-    "spacing",
-    "style",
-)
 ROW_CONTEXT_SUM_MISMATCH_MARKERS = (
     "합계",
     "합산",
@@ -168,10 +149,6 @@ ROW_CONTEXT_SUM_MISMATCH_MARKERS = (
     "불일치",
     "합이",
     "sum",
-)
-ROW_CONTEXT_GENERIC_VALUE_REVIEW_PATTERN = (
-    r"^'?(?P<column>.+?)'?\s+값이\s+'?(?P<value>.+?)'?\s*"
-    r"(?:인\s+경우\s+)?(?:검토|확인(?:\s*필요)?)\.?$"
 )
 
 SHORT_KOREAN_PREFIX_LEN = 2

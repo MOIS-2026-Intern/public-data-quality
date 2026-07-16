@@ -93,3 +93,48 @@ def test_whitespace_rule_describes_multiple_minor_gaps() -> None:
         "'A'과 'B' 사이에 공백 이상이 의심됩니다. "
         "'B'과 'C' 사이에 공백 이상이 의심됩니다."
     )
+
+
+def test_terminal_question_mark_fragment_is_special_character_issue_for_structured_column() -> None:
+    value = "박수홍Bakery&caf?"
+    column = ColumnProfile(
+        raw_name="업소명",
+        normalized_name="업소명",
+        source="response",
+        semantic_tags=["name"],
+        assigned_rules=["required_value", "garbled_text", "whitespace_special_characters"],
+        inferred_primitive_type="text",
+        non_empty_count=1,
+        distinct_count=1,
+        sample_values=[value],
+        top_values=[(value, 1)],
+    )
+
+    findings = validate_column(column, _dataset_meta(), [{"업소명": value}])
+
+    assert len(findings) == 1
+    assert findings[0].rule_id == "special_character_issue"
+    assert findings[0].finding_type == "issue"
+    assert findings[0].row_indexes == [1]
+    assert findings[0].evidence == [value]
+
+
+def test_terminal_question_mark_is_allowed_for_free_text_column() -> None:
+    value = "운영 여부를 확인해야 하나요?"
+    column = ColumnProfile(
+        raw_name="내용",
+        normalized_name="내용",
+        source="response",
+        semantic_tags=["free_text"],
+        format_kind="free_format",
+        assigned_rules=[],
+        inferred_primitive_type="string",
+        non_empty_count=1,
+        distinct_count=1,
+        sample_values=[value],
+        top_values=[(value, 1)],
+    )
+
+    findings = validate_column(column, _dataset_meta(), [{"내용": value}])
+
+    assert findings == []

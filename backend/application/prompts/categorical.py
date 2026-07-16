@@ -46,7 +46,6 @@ Return strict JSON only with keys:
 - out_of_domain_values: list[{{"value": string, "reason": string, "confidence": float}}]
 - invalid_format_values: list[{{"value": string, "issue_type": string, "reason": string, "confidence": float}}]
 - inconsistent_format_groups: list[{{"values": list[string], "target_format": string, "reason": string, "confidence": float}}]
-- needs_manual_review: list[{{"value": string, "reason": string, "confidence": float}}]
 - overall_confidence: float
 
 Decision policy:
@@ -54,8 +53,8 @@ Decision policy:
 - Do not infer an error from rarity alone. Rare values can be valid.
 - Do not infer an error from being shorter, longer, more specific, less specific, or formatted differently unless the value is clearly damaged.
 - If the value can reasonably be a valid standalone category/name/address/route/branch/facility, do not report it as an issue.
-- If evidence is suspicious but not decisive, use needs_manual_review with confidence 0.50-0.89. Do not place ambiguous items in issue lists.
-- If format_kind is "free_format" or semantic_tags contains "free_text", only use out_of_domain_values for values that clearly do not belong to the column meaning. Do not use normalizations, invalid_format_values, inconsistent_format_groups, or needs_manual_review for free-format columns.
+- If evidence is suspicious but not decisive, return no issue. Do not place ambiguous items in issue lists.
+- If format_kind is "free_format" or semantic_tags contains "free_text", only use out_of_domain_values for values that clearly do not belong to the column meaning. Do not use normalizations, invalid_format_values, or inconsistent_format_groups for free-format columns.
 - Do not report missing common business-name suffixes as truncation. Values such as names without 식당, 세탁소, 집, 관, 당, 국밥, 국수집, 센터, or similar suffixes can be valid standalone business names.
 
 Never report these as issues:
@@ -79,7 +78,6 @@ Examples to report:
 Output constraints:
 - Use Korean in reasons.
 - Only issue lists may contain confidence >= 0.90.
-- needs_manual_review must use confidence 0.50-0.89.
 - Set overall_confidence below 0.70 when no strong issue exists.
 - Do not invent target values, official names, or external rules.
 
@@ -111,7 +109,6 @@ False positives are more harmful than missed issues.
 
 Return strict JSON only with keys:
 - row_context_issues: list[{{"row_index": int, "column_name": string, "related_columns": list[string], "message": string, "reason": string, "confidence": float}}]
-- row_context_manual_reviews: list[{{"row_index": int, "column_name": string, "related_columns": list[string], "message": string, "reason": string, "confidence": float}}]
 - overall_confidence: float
 
 Decision policy:
@@ -121,7 +118,7 @@ Decision policy:
 - Do not report normal public/private category values such as "공공기관", "민간기관", "공공시설", "민간시설".
 - Do not report facility type differences unless they directly contradict another value in the same row.
 - Do not report address-detail differences like floor/building/branch names unless they are visibly broken or contradict the base address.
-- If a value is suspicious but not clearly wrong, put it in row_context_manual_reviews with confidence 0.50-0.89. Do not put ambiguous values in row_context_issues.
+- If a value is suspicious but not clearly wrong, return no issue. Do not put ambiguous values in row_context_issues.
 
 Only report row_context_issues when all are true:
 - The contradiction is visible inside the same row.
@@ -146,7 +143,6 @@ Output constraints:
 - column_name and related_columns must exactly match raw_name values from Columns.
 - Use Korean in message and reason.
 - row_context_issues confidence must be >= 0.90.
-- row_context_manual_reviews confidence must be 0.50-0.89.
 - Set overall_confidence below 0.70 when no strong issue exists.
 
 Dataset:

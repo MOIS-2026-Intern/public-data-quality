@@ -1,14 +1,14 @@
 from __future__ import annotations
 
 import hashlib
+import http.client
 import json
 import os
 import threading
 from collections import OrderedDict
 from dataclasses import dataclass
 from typing import Any
-from urllib.error import HTTPError, URLError
-from urllib.request import Request, urlopen
+from urllib.parse import urlsplit
 
 from backend.config.llm import (
     LLM_CACHE_MAX_ENTRIES,
@@ -34,6 +34,7 @@ class ChatLLMResponse:
 class ChatLLMClient:
     _cache: OrderedDict[str, str] = OrderedDict()
     _cache_lock = threading.Lock()
+    _connections = threading.local()
 
     def __init__(
         self,
@@ -60,6 +61,9 @@ class ChatLLMClient:
             return "LLM_MODEL missing"
         if not self.api_url:
             return "LLM_API_URL missing"
+        parsed = urlsplit(self.api_url)
+        if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+            return "LLM_API_URL must be an http(s) URL"
         if not self.api_key:
             return "LLM_API_KEY missing"
         try:
@@ -141,6 +145,63 @@ class ChatLLMClient:
             while len(cls._cache) > LLM_CACHE_MAX_ENTRIES:
                 cls._cache.popitem(last=False)
 
+    @classmethod
+    def _thread_connection_pool(cls) -> dict[str, http.client.HTTPConnection]:
+        pool = getattr(cls._connections, "pool", None)
+        if pool is None:
+            pool = {}
+            cls._connections.pool = pool
+        return pool
+
+    def _connection_key(self) -> str:
+        parsed = urlsplit(self.api_url)
+        return f"{parsed.scheme}://{parsed.netloc}|timeout={self.timeout_seconds}"
+
+    def _request_target(self) -> str:
+        parsed = urlsplit(self.api_url)
+        target = parsed.path or "/"
+        if parsed.query:
+            target = f"{target}?{parsed.query}"
+        return target
+
+    def _get_connection(self) -> http.client.HTTPConnection:
+        parsed = urlsplit(self.api_url)
+        key = self._connection_key()
+        pool = self._thread_connection_pool()
+        connection = pool.get(key)
+        if connection is not None:
+            return connection
+
+        connection_class = http.client.HTTPSConnection if parsed.scheme == "https" else http.client.HTTPConnection
+        connection = connection_class(parsed.netloc, timeout=self.timeout_seconds)
+        pool[key] = connection
+        return connection
+
+    def _close_connection(self) -> None:
+        key = self._connection_key()
+        pool = self._thread_connection_pool()
+        connection = pool.pop(key, None)
+        if connection is not None:
+            connection.close()
+
+    def _post_chat_once(self, data: bytes, headers: dict[str, str]) -> dict[str, Any] | None:
+        connection = self._get_connection()
+        connection.request("POST", self._request_target(), body=data, headers=headers)
+        response = connection.getresponse()
+        raw_body = response.read().decode("utf-8")
+        if response.getheader("Connection", "").lower() == "close":
+            self._close_connection()
+        if response.status >= 400:
+            self.last_error = f"HTTP {response.status}: {raw_body or response.reason}"
+            self.last_response_preview = ""
+            return None
+        try:
+            return json.loads(raw_body)
+        except json.JSONDecodeError:
+            self.last_error = "invalid JSON response"
+            self.last_response_preview = ""
+            return None
+
     def _post_chat(self, payload: dict[str, Any]) -> ChatLLMResponse | None:
         if not self.enabled:
             return None
@@ -155,35 +216,33 @@ class ChatLLMClient:
         headers = {
             "Content-Type": "application/json",
             "Authorization": f"Bearer {self.api_key}",
+            "Accept": "application/json",
+            "Connection": "keep-alive",
         }
         data = json.dumps(payload).encode("utf-8")
-        request = Request(
-            self.api_url,
-            data=data,
-            headers=headers,
-            method="POST",
-        )
-        try:
-            with urlopen(request, timeout=self.timeout_seconds) as response:
-                body = json.loads(response.read().decode("utf-8"))
-        except HTTPError as exc:
+        body = None
+        for attempt in range(2):
             try:
-                error_body = exc.read().decode("utf-8")
-            except Exception:
-                error_body = ""
-            self.last_error = f"HTTP {exc.code}: {error_body or exc.reason}"
-            return None
-        except URLError as exc:
-            self.last_error = f"URL error: {exc.reason}"
-            return None
-        except TimeoutError:
-            self.last_error = "request timeout"
-            return None
-        except UnicodeEncodeError:
-            self.last_error = "HTTP header encoding error: API key contains unsupported characters"
-            return None
-        except json.JSONDecodeError:
-            self.last_error = "invalid JSON response"
+                body = self._post_chat_once(data, headers)
+                break
+            except TimeoutError:
+                self._close_connection()
+                self.last_error = "request timeout"
+                self.last_response_preview = ""
+                return None
+            except UnicodeEncodeError:
+                self._close_connection()
+                self.last_error = "HTTP header encoding error: API key contains unsupported characters"
+                self.last_response_preview = ""
+                return None
+            except (http.client.HTTPException, OSError) as exc:
+                self._close_connection()
+                self.last_error = f"HTTP connection error: {exc}"
+                self.last_response_preview = ""
+                if attempt == 0:
+                    continue
+                return None
+        if body is None:
             return None
 
         content = self._extract_content(body)

@@ -49,6 +49,7 @@ def _fast_model_name(
 ) -> str:
     return (
         request.llm_fast_model
+        or request.llm_model
         or _first_env("BIZROUTER_FAST_MODEL", "OPENAI_FAST_MODEL", "BIZROUTER_MODEL", "OPENAI_MODEL")
         or LLM_FAST_MODEL
     )

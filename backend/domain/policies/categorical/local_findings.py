@@ -10,15 +10,12 @@ from .column import (
     allows_context_free_replacement_detection,
     allows_institution_suffix_truncation,
     allows_local_prefix_truncation,
-    allows_local_surface_normalization,
     is_low_ratio_sido_spacing_variant,
     looks_free_text_column,
     looks_name_column,
 )
 from .normalization import (
-    canonical_normalization_key,
     find_compact_domain_variant_pairs,
-    find_surface_normalization_pairs,
 )
 from .text import (
     looks_context_free_replacement_value,
@@ -61,7 +58,6 @@ def value_rows(
 
 @dataclass(frozen=True)
 class LocalCategoricalFindingCounts:
-    normalization_count: int = 0
     truncated_count: int = 0
     malformed_count: int = 0
     non_name_count: int = 0
@@ -71,8 +67,7 @@ class LocalCategoricalFindingCounts:
     @property
     def has_findings(self) -> bool:
         return bool(
-            self.normalization_count
-            or self.truncated_count
+            self.truncated_count
             or self.malformed_count
             or self.non_name_count
             or self.domain_variant_count
@@ -81,7 +76,6 @@ class LocalCategoricalFindingCounts:
 
     def trace_detail(self, skipped_reason: str) -> str:
         return (
-            f"local_normalization_findings={self.normalization_count}, "
             f"local_truncated_findings={self.truncated_count}, "
             f"local_malformed_findings={self.malformed_count}, "
             f"local_non_name_findings={self.non_name_count}, "
@@ -103,7 +97,6 @@ def apply_local_categorical_findings(
     if looks_free_text_column(column):
         return LocalCategoricalFindingCounts()
 
-    normalization_count = 0
     truncated_count = 0
     malformed_count = 0
     non_name_count = 0
@@ -112,31 +105,6 @@ def apply_local_categorical_findings(
 
     def row_indexes_for(target_value: str) -> list[int]:
         return value_rows(rows, column.raw_name, target_value, value_row_indexes)
-
-    normalization_pairs = (
-        find_surface_normalization_pairs(counter)
-        if allows_local_surface_normalization(column)
-        else []
-    )
-    for source, target in normalization_pairs:
-        if is_low_ratio_sido_spacing_variant(column, source, counter):
-            continue
-        finding = build_finding(
-            column_name=column.raw_name,
-            severity="warning",
-            category_group="domain_validity",
-            criterion_name="categorical_semantic_domain",
-            rule_id="categorical_value_normalization",
-            message=f"'{source}' 값은 '{target}'로 표면 형식을 표준화하는 것이 적절합니다.",
-            row_indexes=row_indexes_for(source),
-            related_columns=[column.raw_name],
-            evidence=[f"canonical:{canonical_normalization_key(source)}", "detector:surface_normalization"],
-        )
-        key = finding_key(finding)
-        if key not in existing_finding_keys:
-            findings.append(finding)
-            existing_finding_keys.add(key)
-            normalization_count += 1
 
     domain_variant_pairs = (
         find_compact_domain_variant_pairs(counter)
@@ -275,7 +243,6 @@ def apply_local_categorical_findings(
             truncated_count += 1
 
     return LocalCategoricalFindingCounts(
-        normalization_count=normalization_count,
         truncated_count=truncated_count,
         malformed_count=malformed_count,
         non_name_count=non_name_count,

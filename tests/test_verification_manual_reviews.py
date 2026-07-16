@@ -27,7 +27,7 @@ def _name_column() -> ColumnProfile:
     )
 
 
-def test_row_level_manual_review_survives_verification() -> None:
+def test_non_whitespace_manual_review_is_filtered_by_verification() -> None:
     column = _name_column()
     raw_findings = [
         build_finding(
@@ -62,15 +62,13 @@ def test_row_level_manual_review_survives_verification() -> None:
         }
     )
 
-    assert len(result["findings"]) == 1
-    assert result["findings"][0].rule_id == "categorical_value_manual_review"
-    assert result["findings"][0].finding_type == "manual_review"
-    assert result["summary"]["manual_review_finding_count"] == 1
+    assert result["findings"] == []
+    assert result["summary"]["manual_review_finding_count"] == 0
     assert result["summary"]["issue_finding_count"] == 0
     assert result["summary"]["suppressed_potential_finding_count"] == 1
 
 
-def test_manual_review_required_survives_verification() -> None:
+def test_manual_review_required_is_filtered_by_verification() -> None:
     column = ColumnProfile(
         raw_name="미분류컬럼",
         normalized_name="미분류컬럼",
@@ -102,10 +100,39 @@ def test_manual_review_required_survives_verification() -> None:
         }
     )
 
-    assert len(result["findings"]) == 1
-    assert result["findings"][0].rule_id == "manual_review_required"
-    assert result["findings"][0].finding_type == "manual_review"
+    assert result["findings"] == []
     assert result["summary"]["manual_review_count"] == 1
+    assert result["summary"]["manual_review_finding_count"] == 0
+    assert result["summary"]["issue_finding_count"] == 0
+
+
+def test_whitespace_manual_review_survives_verification() -> None:
+    column = _name_column()
+    raw_findings = [
+        build_finding(
+            column_name=column.raw_name,
+            severity="info",
+            category_group="completeness",
+            criterion_name="whitespace_special_characters",
+            rule_id="whitespace_manual_review",
+            message="값에 경미한 공백 이상이 의심되어 수동 검토가 필요합니다.",
+            row_indexes=[2],
+            related_columns=[column.raw_name],
+            evidence=["문의  후 이용 바랍니다"],
+        )
+    ]
+
+    result = verify_results(
+        {
+            "dataset_meta": _dataset_meta(),
+            "columns": [column],
+            "findings": raw_findings,
+        }
+    )
+
+    assert len(result["findings"]) == 1
+    assert result["findings"][0].rule_id == "whitespace_manual_review"
+    assert result["findings"][0].finding_type == "manual_review"
     assert result["summary"]["manual_review_finding_count"] == 1
     assert result["summary"]["issue_finding_count"] == 0
 

@@ -89,6 +89,20 @@ class GroupingVerifier:
         }
 
 
+class CountingVerifier:
+    enabled = True
+    last_error = ""
+    last_response_preview = ""
+    last_model_name = "fake-strong"
+
+    def __init__(self) -> None:
+        self.calls = 0
+
+    def verify(self, *, dataset_name, provider_name, candidates):
+        self.calls += 1
+        return {"verified_findings": []}
+
+
 def test_final_finding_verifier_keeps_only_llm_confirmed_issues() -> None:
     findings = [
         build_finding(
@@ -98,7 +112,7 @@ def test_final_finding_verifier_keeps_only_llm_confirmed_issues() -> None:
             criterion_name="date_domain",
             message="날짜 형식이 올바르지 않습니다.",
             row_indexes=[1],
-            evidence=["detector:test"],
+            evidence=["detector:llm_categorical", "stage:strong", "confidence:0.95"],
         ),
         build_finding(
             column_name="사이트",
@@ -131,6 +145,36 @@ def test_final_finding_verifier_keeps_only_llm_confirmed_issues() -> None:
     assert result["findings"][0].message == "날짜 형식이 올바르지 않습니다."
     assert result["findings"][0].llm_final_verification == "날짜 컬럼 값이 실제 날짜 형식으로 해석되지 않습니다."
     assert "final_verifier:llm" in result["findings"][0].evidence
+
+
+def test_final_finding_verifier_skips_local_deterministic_issue_llm_call() -> None:
+    verifier = CountingVerifier()
+    finding = build_finding(
+        column_name="업소명",
+        severity="warning",
+        category_group="completeness",
+        criterion_name="whitespace_special_characters",
+        rule_id="special_character_issue",
+        message="컬럼명 또는 값에 허용 범위를 벗어난 특수문자가 포함된 것으로 보입니다.",
+        row_indexes=[1],
+        evidence=["박수홍Bakery&caf?"],
+    )
+
+    result = FinalFindingVerificationAgent(verifier=verifier).run(
+        {
+            "use_llm_agents": True,
+            "dataset_meta": DatasetMeta(dataset_id="d", dataset_name="테스트", provider_name="기관"),
+            "validation_rows": [{"업소명": "박수홍Bakery&caf?"}],
+            "findings": [finding],
+            "agent_traces": [],
+        }
+    )
+
+    assert verifier.calls == 0
+    assert len(result["findings"]) == 1
+    assert result["findings"][0].rule_id == "special_character_issue"
+    assert result["findings"][0].llm_final_verification == "로컬 규칙에서 허용 범위를 벗어난 특수문자가 확인되었습니다."
+    assert "final_verifier:local_rule" in result["findings"][0].evidence
 
 
 def test_final_finding_verifier_preserves_institution_suffix_truncation() -> None:

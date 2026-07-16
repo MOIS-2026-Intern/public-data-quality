@@ -32,7 +32,7 @@ def build_finding(
     resolved_row_indexes = row_indexes or []
     resolved_finding_type = finding_type or (
         "manual_review"
-        if resolved_severity == "info" or resolved_rule_id in MANUAL_REVIEW_RULE_IDS or not resolved_row_indexes
+        if resolved_severity == "info" or resolved_rule_id in MANUAL_REVIEW_RULE_IDS
         else "issue"
     )
     display_label = "수동 검토 필요" if resolved_finding_type == "manual_review" else "오류/이상 탐지"
