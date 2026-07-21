@@ -182,6 +182,24 @@ INSTITUTION_SUFFIX_COMPLETIONS = {
     "초등학": "초등학교",
     "어린이": "어린이집",
 }
+INCOMPLETE_ENTITY_MODIFIER_SUFFIXES = {
+    "국립",
+    "공립",
+    "사립",
+    "시립",
+    "도립",
+    "군립",
+    "구립",
+    "공영",
+    "시영",
+    "도영",
+    "군영",
+    "구영",
+    "공공",
+    "민간",
+    "광역",
+    "지역",
+}
 COMPLETE_LOCATION_VALUES = {
     "정문",
     "후문",

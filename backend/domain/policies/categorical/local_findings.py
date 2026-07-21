@@ -11,6 +11,7 @@ from .column import (
     allows_institution_suffix_truncation,
     allows_local_prefix_truncation,
     is_low_ratio_sido_spacing_variant,
+    looks_address_text_column,
     looks_free_text_column,
     looks_name_column,
 )
@@ -21,6 +22,7 @@ from .text import (
     looks_context_free_replacement_value,
     looks_malformed_text_value,
     looks_non_name_value,
+    looks_unclosed_delimiter_value,
     normalized_text,
 )
 from .truncation import (
@@ -195,6 +197,32 @@ def apply_local_categorical_findings(
             else:
                 context_free_replacement_count += 1
 
+    unclosed_delimiter_values = (
+        set()
+        if looks_free_text_column(column) or looks_address_text_column(column)
+        else {value for value in counter if looks_unclosed_delimiter_value(value)}
+    )
+    for value in sorted(unclosed_delimiter_values):
+        finding = build_finding(
+            column_name=column.raw_name,
+            severity="warning",
+            category_group="domain_validity",
+            criterion_name="categorical_semantic_domain",
+            rule_id="categorical_value_truncated",
+            message=(
+                f"'{value}' 값은 괄호 또는 대괄호가 닫히지 않아 "
+                "입력 중 잘림 가능성이 있습니다."
+            ),
+            row_indexes=row_indexes_for(value),
+            related_columns=[column.raw_name],
+            evidence=["detector:unclosed_delimiter"],
+        )
+        key = finding_key(finding)
+        if key not in existing_finding_keys:
+            findings.append(finding)
+            existing_finding_keys.add(key)
+            truncated_count += 1
+
     prefix_pairs = find_truncated_value_pairs(counter) if allows_local_prefix_truncation(column) else []
     institution_pairs = (
         find_institution_suffix_completion_pairs(counter)
@@ -203,6 +231,8 @@ def apply_local_categorical_findings(
     )
     truncated_pairs = sorted(set(prefix_pairs + institution_pairs))
     for source, target in truncated_pairs:
+        if source in unclosed_delimiter_values:
+            continue
         is_single_char_completion = is_single_char_entity_completion(
             normalized_text(source),
             normalized_text(target),

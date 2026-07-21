@@ -12,13 +12,15 @@ from backend.application.dto import PipelineExecutionRequest
 from backend.infrastructure.io.sources import PreparedDataset
 
 
-def _dependencies() -> WebAdapterDependencies:
+def _dependencies(column_report_paths=None) -> WebAdapterDependencies:
     return WebAdapterDependencies(
         pipeline_analysis_use_case=lambda: None,
         validation_output_dir=lambda base_dir=None: Path("/tmp"),
         attach_report_paths=lambda **kwargs: kwargs["response"],
         write_batch_error_report=lambda **kwargs: Path("/tmp/batch_report.xlsx"),
-        write_batch_column_error_report=lambda **kwargs: Path("/tmp/batch_column_report.xlsx"),
+        write_batch_column_error_report=lambda **kwargs: (
+            column_report_paths or Path("/tmp/batch_column_report.xlsx")
+        ),
         public_download_name=lambda filename, default_suffix=".xlsx": filename,
         prepare_saved_dataset=lambda *args, **kwargs: [],
         prepare_url_datasets=lambda *args, **kwargs: [],
@@ -94,6 +96,47 @@ def test_analyze_prepared_datasets_generates_batch_report_paths(tmp_path) -> Non
     assert payload["batch"] is True
     assert payload["summary"]["error_report_xlsx"] == "batch_report.xlsx"
     assert payload["summary"]["column_error_report_xlsx"] == "batch_column_report.xlsx"
+    assert payload["summary"]["column_error_report_xlsx_files"] == ["batch_column_report.xlsx"]
+
+
+def test_analyze_prepared_datasets_exposes_split_column_report_paths(tmp_path) -> None:
+    first_path = tmp_path / "a.csv"
+    second_path = tmp_path / "b.csv"
+    first_path.write_text("value\n1\n", encoding="utf-8")
+    second_path.write_text("value\n2\n", encoding="utf-8")
+    datasets = [
+        PreparedDataset(display_name="a.csv", path=first_path, source_type="file", response_type="csv"),
+        PreparedDataset(display_name="b.csv", path=second_path, source_type="file", response_type="csv"),
+    ]
+
+    original = execution._analyze_dataset_item
+    results = iter(
+        [
+            {"ok": True, "filename": "a.csv", "result": {"summary": {"dataset_name": "a"}, "findings": []}},
+            {"ok": True, "filename": "b.csv", "result": {"summary": {"dataset_name": "b"}, "findings": []}},
+        ]
+    )
+    execution._analyze_dataset_item = lambda **_: next(results)
+    try:
+        payload, status_code = execution.analyze_prepared_datasets(
+            prepared_datasets=datasets,
+            options=PipelineExecutionRequest(),
+            dependencies=_dependencies(
+                [
+                    Path("/tmp/전체_컬럼별_데이터_오류_01.xlsx"),
+                    Path("/tmp/전체_컬럼별_데이터_오류_02.xlsx"),
+                ]
+            ),
+        )
+    finally:
+        execution._analyze_dataset_item = original
+
+    assert status_code == 200
+    assert payload["summary"]["column_error_report_xlsx"] == "전체_컬럼별_데이터_오류_01.xlsx"
+    assert payload["summary"]["column_error_report_xlsx_files"] == [
+        "전체_컬럼별_데이터_오류_01.xlsx",
+        "전체_컬럼별_데이터_오류_02.xlsx",
+    ]
 
 
 def test_analyze_prepared_datasets_wraps_single_failure() -> None:
@@ -198,3 +241,4 @@ def test_stream_analysis_events_emits_batch_report_path_for_batch(monkeypatch, t
     assert events[-1]["payload"]["batch"] is True
     assert events[-1]["payload"]["summary"]["error_report_xlsx"] == "batch_report.xlsx"
     assert events[-1]["payload"]["summary"]["column_error_report_xlsx"] == "batch_column_report.xlsx"
+    assert events[-1]["payload"]["summary"]["column_error_report_xlsx_files"] == ["batch_column_report.xlsx"]

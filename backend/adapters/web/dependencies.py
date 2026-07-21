@@ -16,7 +16,7 @@ class WebAdapterDependencies:
     validation_output_dir: Callable[[Path | None], Path]
     attach_report_paths: Callable[..., dict[str, Any]]
     write_batch_error_report: Callable[..., Path]
-    write_batch_column_error_report: Callable[..., Path]
+    write_batch_column_error_report: Callable[..., Path | list[Path]]
     public_download_name: Callable[..., str]
     prepare_saved_dataset: Callable[..., list[PreparedDataset]]
     prepare_url_datasets: Callable[..., list[PreparedDataset]]

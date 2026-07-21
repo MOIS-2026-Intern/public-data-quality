@@ -7,7 +7,11 @@ export function getReportDownloadUrl(result) {
 }
 
 export function getColumnErrorReportDownloadUrl(result) {
-  return getSummaryReportDownloadUrl(result, "column_error_report");
+  return getColumnErrorReportDownloadUrls(result)[0] || "";
+}
+
+export function getColumnErrorReportDownloadUrls(result) {
+  return getSummaryReportDownloadUrls(result, "column_error_report");
 }
 
 function getSummaryReportDownloadUrl(result, keyPrefix) {
@@ -20,6 +24,23 @@ function getSummaryReportDownloadUrl(result, keyPrefix) {
     return "";
   }
   return `/api/reports/download?path=${encodeURIComponent(reportPath)}`;
+}
+
+function getSummaryReportDownloadUrls(result, keyPrefix) {
+  const downloadPaths = result?.summary?.[`${keyPrefix}_download_paths`];
+  if (Array.isArray(downloadPaths) && downloadPaths.length) {
+    return downloadPaths.filter(Boolean);
+  }
+
+  const reportFiles = result?.summary?.[`${keyPrefix}_xlsx_files`];
+  if (Array.isArray(reportFiles) && reportFiles.length) {
+    return reportFiles
+      .filter(Boolean)
+      .map((reportPath) => `/api/reports/download?path=${encodeURIComponent(reportPath)}`);
+  }
+
+  const downloadUrl = getSummaryReportDownloadUrl(result, keyPrefix);
+  return downloadUrl ? [downloadUrl] : [];
 }
 
 function SummarySection({ summary }) {

@@ -83,6 +83,14 @@ def test_url_values_are_not_malformed_text() -> None:
     )
 
 
+def test_business_name_style_punctuation_is_not_malformed_text() -> None:
+    assert not looks_malformed_text_value("까까 보까!")
+    assert not looks_malformed_text_value("머리해요!")
+    assert not looks_malformed_text_value("네일어때?")
+    assert not looks_malformed_text_value("막창집(ㅁㅊ집)")
+    assert looks_malformed_text_value("박수홍Bakery&caf?")
+
+
 def test_free_text_url_columns_skip_local_malformed_findings() -> None:
     value = (
         "https://www.bokjiro.go.kr/ssis-tbu/twataa/wlfareInfo/moveTWAT52011M.do"

@@ -185,6 +185,12 @@ def test_async_job_service_finalizes_batch_column_error_report(monkeypatch, tmp_
     assert payload["summary"]["error_report_xlsx"].startswith(f"jobs/{job.job_id}/")
     assert payload["summary"]["column_error_report_xlsx"].startswith(f"jobs/{job.job_id}/")
     assert payload["summary"]["column_error_report_download_path"].startswith("/api/jobs/artifacts/download?key=")
+    assert payload["summary"]["column_error_report_xlsx_files"] == [
+        payload["summary"]["column_error_report_xlsx"]
+    ]
+    assert payload["summary"]["column_error_report_download_paths"] == [
+        payload["summary"]["column_error_report_download_path"]
+    ]
 
 
 def test_public_job_payload_hides_api_key_and_source_artifact(tmp_path) -> None:

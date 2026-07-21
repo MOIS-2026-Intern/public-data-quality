@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any
 
 from openpyxl import Workbook
+from openpyxl.utils import get_column_letter
 
 from backend.config.reporting import (
     BATCH_COLUMN_ERROR_REPORT_FILENAME,
@@ -29,6 +30,7 @@ from .workbook_support import (
 from .artifacts import unique_artifact_path
 
 _SHEET_TITLE_UNSAFE_RE = re.compile(r"[\[\]:*?/\\]+")
+_BATCH_COLUMN_ERROR_REPORT_CHUNK_SIZE = 30
 
 
 def write_error_report(
@@ -81,40 +83,63 @@ def write_batch_column_error_report(
     *,
     entries: list[dict[str, Any]],
     output_dir: Path,
-) -> Path:
+) -> list[Path]:
     reports_dir = output_dir / REPORTS_DIR_NAME
     reports_dir.mkdir(parents=True, exist_ok=True)
 
-    report_path = unique_artifact_path(reports_dir, BATCH_COLUMN_ERROR_REPORT_FILENAME)
-    workbook = Workbook()
     successful_entries = [entry for entry in entries if isinstance(entry.get("result"), dict)]
     if not successful_entries:
+        report_path = unique_artifact_path(reports_dir, BATCH_COLUMN_ERROR_REPORT_FILENAME)
+        workbook = Workbook()
         workbook.active.title = "데이터"
         workbook.save(report_path)
-        return report_path
+        return [report_path]
 
-    used_titles: set[str] = set()
-    first_entry = successful_entries[0]
-    first_sheet = workbook.active
-    first_sheet.title = _unique_sheet_title(_result_dataset_name(first_entry["result"]), used_titles)
-    _write_column_error_sheet(
-        first_sheet,
-        first_entry["result"],
-        list(first_entry.get("validation_rows") or []),
-    )
-
-    for entry in successful_entries[1:]:
-        sheet = workbook.create_sheet(
-            _unique_sheet_title(_result_dataset_name(entry["result"]), used_titles)
+    entry_chunks = list(_chunks(successful_entries, _BATCH_COLUMN_ERROR_REPORT_CHUNK_SIZE))
+    use_chunked_filename = len(entry_chunks) > 1
+    report_paths: list[Path] = []
+    for chunk_index, entry_chunk in enumerate(entry_chunks, start=1):
+        report_path = unique_artifact_path(
+            reports_dir,
+            (
+                _batch_column_error_report_filename(chunk_index)
+                if use_chunked_filename
+                else BATCH_COLUMN_ERROR_REPORT_FILENAME
+            ),
         )
+        workbook = Workbook()
+        used_titles: set[str] = set()
+        first_entry = entry_chunk[0]
+        first_sheet = workbook.active
+        first_sheet.title = _unique_sheet_title(_result_dataset_name(first_entry["result"]), used_titles)
         _write_column_error_sheet(
-            sheet,
-            entry["result"],
-            list(entry.get("validation_rows") or []),
+            first_sheet,
+            first_entry["result"],
+            list(first_entry.get("validation_rows") or []),
         )
 
-    workbook.save(report_path)
-    return report_path
+        for entry in entry_chunk[1:]:
+            sheet = workbook.create_sheet(
+                _unique_sheet_title(_result_dataset_name(entry["result"]), used_titles)
+            )
+            _write_column_error_sheet(
+                sheet,
+                entry["result"],
+                list(entry.get("validation_rows") or []),
+            )
+
+        workbook.save(report_path)
+        report_paths.append(report_path)
+    return report_paths
+
+
+def _batch_column_error_report_filename(chunk_index: int) -> str:
+    path = Path(BATCH_COLUMN_ERROR_REPORT_FILENAME)
+    return f"{path.stem}_{chunk_index:02d}{path.suffix}"
+
+
+def _chunks(items: list[dict[str, Any]], chunk_size: int) -> list[list[dict[str, Any]]]:
+    return [items[index : index + chunk_size] for index in range(0, len(items), chunk_size)]
 
 
 def _write_summary_sheet(sheet, result: dict[str, Any], validation_rows: list[dict[str, str]]) -> None:
@@ -196,7 +221,21 @@ def _write_column_error_sheet(sheet, result: dict[str, Any], validation_rows: li
             ]
         )
 
+    _apply_error_status_filter(sheet, display_headers)
     _auto_width(sheet, max_width=52)
+
+
+def _apply_error_status_filter(sheet, headers: list[str]) -> None:
+    try:
+        error_status_column_index = headers.index("오류 여부") + 1
+    except ValueError:
+        return
+    if sheet.max_row < 2:
+        return
+
+    column_letter = get_column_letter(error_status_column_index)
+    sheet.auto_filter.ref = f"{column_letter}1:{column_letter}{sheet.max_row}"
+    sheet.auto_filter.add_filter_column(0, ["오류"])
 
 
 def _write_findings_sheet(sheet, result: dict[str, Any], validation_rows: list[dict[str, str]]) -> None:

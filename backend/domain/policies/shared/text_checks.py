@@ -2,9 +2,10 @@ from __future__ import annotations
 
 import re
 
-_SUSPICIOUS_SYMBOL_RE = re.compile(r"[�]|[ㄱ-ㅎㅏ-ㅣ]{2,}|[?!]{2,}|[#@$%^*_={}|\\]{3,}")
-_TERMINAL_PUNCTUATION_FRAGMENT_RE = re.compile(r"[가-힣A-Za-z0-9][?！!]\s*$")
-_BROKEN_TEXT_RE = re.compile(r"[�]|[ㄱ-ㅎㅏ-ㅣ]{2,}")
+_SUSPICIOUS_SYMBOL_RE = re.compile(r"[�]|[?!]{2,}|[#@$%^*_={}|\\]{3,}")
+_TERMINAL_PUNCTUATION_FRAGMENT_RE = re.compile(r"[&/+][A-Za-z]{1,12}[?！!]\s*$")
+_BROKEN_TEXT_RE = re.compile(r"[�]")
+_JAMO_SEQUENCE_RE = re.compile(r"[ㄱ-ㅎㅏ-ㅣ]{2,}")
 _PHONE_DIGIT_RE = re.compile(r"^[0-9+\-() ]+$")
 _MULTI_WHITESPACE_RE = re.compile(r"\s{2,}")
 _STRONG_MULTI_WHITESPACE_RE = re.compile(r"\s{3,}")
@@ -13,7 +14,20 @@ _RANGE_WHITESPACE_RE = re.compile(r"\S(?P<left>\s*)[~〜∼](?P<right>\s*)\S")
 
 
 def contains_broken_text(value: str) -> bool:
-    return bool(_BROKEN_TEXT_RE.search(value))
+    return bool(_BROKEN_TEXT_RE.search(value)) or _has_disallowed_jamo_sequence(value)
+
+
+def _has_disallowed_jamo_sequence(value: str) -> bool:
+    text = value or ""
+    for match in _JAMO_SEQUENCE_RE.finditer(text):
+        opening_index = text.rfind("(", 0, match.start())
+        closing_index = text.find(")", match.end())
+        if opening_index != -1 and closing_index != -1:
+            parenthetical = text[opening_index + 1 : closing_index]
+            if re.fullmatch(r"[ㄱ-ㅎㅏ-ㅣ]{2,}[가-힣A-Za-z0-9]*", parenthetical):
+                continue
+        return True
+    return False
 
 
 def has_whitespace_issue(value: str) -> bool:
@@ -73,7 +87,7 @@ def describe_minor_whitespace_issue(value: str) -> list[str]:
 
 
 def has_special_char_issue(value: str) -> bool:
-    return bool(_SUSPICIOUS_SYMBOL_RE.search(value))
+    return bool(_SUSPICIOUS_SYMBOL_RE.search(value)) or _has_disallowed_jamo_sequence(value)
 
 
 def has_terminal_punctuation_fragment(value: str) -> bool:

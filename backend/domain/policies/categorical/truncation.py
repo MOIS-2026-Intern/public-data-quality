@@ -9,6 +9,7 @@ from backend.config.categorical import (
     COMPLETE_LOCATION_VALUES,
     ENTITY_COMPLETION_SUFFIXES,
     FACILITY_QUALIFIER_SUFFIXES,
+    INCOMPLETE_ENTITY_MODIFIER_SUFFIXES,
     INSTITUTION_SUFFIX_COMPLETIONS,
     MIN_TRUNCATED_PREFIX_LEN,
     MIN_TRUNCATED_PREFIX_RATIO,
@@ -115,6 +116,22 @@ def is_institution_suffix_completion(short_norm: str, long_norm: str) -> bool:
     return INSTITUTION_SUFFIX_COMPLETIONS.get(short_norm) == long_norm
 
 
+def is_incomplete_modifier_entity_completion(short_norm: str, long_norm: str) -> bool:
+    if not long_norm.startswith(short_norm):
+        return False
+    if not any(short_norm.endswith(suffix) for suffix in INCOMPLETE_ENTITY_MODIFIER_SUFFIXES):
+        return False
+    return any(long_norm.endswith(suffix) for suffix in ENTITY_COMPLETION_SUFFIXES)
+
+
+def is_high_confidence_truncation_pair(short_norm: str, long_norm: str) -> bool:
+    return (
+        is_single_char_entity_completion(short_norm, long_norm)
+        or is_institution_suffix_completion(short_norm, long_norm)
+        or is_incomplete_modifier_entity_completion(short_norm, long_norm)
+    )
+
+
 def find_institution_suffix_completion_pairs(counter: Counter[str]) -> list[tuple[str, str]]:
     normalized_values, values_by_normalized, _ = _normalized_counter_values(counter)
     pairs: list[tuple[str, str]] = []
@@ -158,6 +175,8 @@ def find_truncated_value_pairs(counter: Counter[str]) -> list[tuple[str, str]]:
                 continue
             is_single_char_completion = is_single_char_entity_completion(short_norm, long_norm)
             is_institution_completion = is_institution_suffix_completion(short_norm, long_norm)
+            if not is_high_confidence_truncation_pair(short_norm, long_norm):
+                continue
             short_count = counter[short_value]
             for long_value in values_by_normalized.get(long_norm, ()):
                 if short_value == long_value:

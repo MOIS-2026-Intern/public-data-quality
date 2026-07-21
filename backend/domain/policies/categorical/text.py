@@ -174,6 +174,29 @@ def looks_url_like_value(value: str) -> bool:
     return "http://" in text or "https://" in text or bool(re.search(r"\bwww\.[^\s]+", text))
 
 
+def _has_disallowed_jamo_sequence(text: str) -> bool:
+    for match in re.finditer(r"[ㄱ-ㅎㅏ-ㅣ]{2,}", text):
+        opening_index = text.rfind("(", 0, match.start())
+        closing_index = text.find(")", match.end())
+        if opening_index != -1 and closing_index != -1:
+            parenthetical = text[opening_index + 1 : closing_index]
+            if re.fullmatch(r"[ㄱ-ㅎㅏ-ㅣ]{2,}[가-힣A-Za-z0-9]*", parenthetical):
+                continue
+        return True
+    return False
+
+
+def looks_unclosed_delimiter_value(value: str) -> bool:
+    text = re.sub(r"\s+", " ", str(value or "")).strip()
+    if not text:
+        return False
+    return (
+        text.count("(") > text.count(")")
+        or text.count("[") > text.count("]")
+        or text.count("{") > text.count("}")
+    )
+
+
 def looks_malformed_text_value(value: str) -> bool:
     text = str(value or "").strip()
     if not text:
@@ -182,7 +205,7 @@ def looks_malformed_text_value(value: str) -> bool:
         return True
     if re.search(r"[ÃÂêëìíîïðñòóôõöøùúûüýþÿ]{2,}", text):
         return True
-    if re.search(r"[ㄱ-ㅎㅏ-ㅣ]{2,}", text):
+    if _has_disallowed_jamo_sequence(text):
         return True
     if looks_url_like_value(text):
         return False
@@ -192,7 +215,7 @@ def looks_malformed_text_value(value: str) -> bool:
         return True
     if re.search(r"[?!]{2,}", text):
         return True
-    if re.search(r"[가-힣A-Za-z0-9][?！!]{1,}$", text):
+    if re.search(r"[&/+][A-Za-z]{1,12}[?！!]{1,}$", text):
         return True
     if "학꾜" in text or "주챠장" in text:
         return True

@@ -154,11 +154,15 @@ def _attach_batch_report_path(
     if prepared_datasets and not summary.get("column_error_report_xlsx"):
         column_report_entries = _prepared_batch_column_report_entries(items, prepared_datasets)
         if column_report_entries:
-            column_report_path = resolved_dependencies.write_batch_column_error_report(
-                entries=column_report_entries,
-                output_dir=resolved_dependencies.validation_output_dir(),
+            column_report_paths = _report_paths(
+                resolved_dependencies.write_batch_column_error_report(
+                    entries=column_report_entries,
+                    output_dir=resolved_dependencies.validation_output_dir(),
+                )
             )
-            summary["column_error_report_xlsx"] = column_report_path.name
+            if column_report_paths:
+                summary["column_error_report_xlsx"] = column_report_paths[0].name
+                summary["column_error_report_xlsx_files"] = [path.name for path in column_report_paths]
     return payload
 
 
@@ -204,6 +208,12 @@ def _report_download_path(value: str, *, dependencies: WebAdapterDependencies | 
 
 def _download_name(filename: str, *, dependencies: WebAdapterDependencies | None = None) -> str:
     return _resolve_dependencies(dependencies).public_download_name(filename, default_suffix=".xlsx")
+
+
+def _report_paths(value: Path | str | list[Path | str]) -> list[Path]:
+    if isinstance(value, list):
+        return [Path(path) for path in value]
+    return [Path(value)]
 
 
 def _prepared_batch_column_report_entries(

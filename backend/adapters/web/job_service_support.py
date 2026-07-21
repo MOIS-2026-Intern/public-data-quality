@@ -155,20 +155,40 @@ def persist_batch_report(
             tmp_dir=Path(tmp_dir),
         )
         if column_report_entries:
-            column_report_path = dependencies.write_batch_column_error_report(
-                entries=column_report_entries,
-                output_dir=output_dir,
+            column_report_paths = _report_paths(
+                dependencies.write_batch_column_error_report(
+                    entries=column_report_entries,
+                    output_dir=output_dir,
+                )
             )
-            column_report_artifact = artifact_store.put_file(
-                column_report_path,
-                key=f"jobs/{job_id}/results/{column_report_path.name}",
-                filename=column_report_path.name,
-            )
-            payload["summary"]["column_error_report_xlsx"] = column_report_artifact.key
+            column_report_artifacts = [
+                artifact_store.put_file(
+                    column_report_path,
+                    key=f"jobs/{job_id}/results/{column_report_path.name}",
+                    filename=column_report_path.name,
+                )
+                for column_report_path in column_report_paths
+            ]
+            if not column_report_artifacts:
+                return batch_report_artifact
+            first_column_report_artifact = column_report_artifacts[0]
+            payload["summary"]["column_error_report_xlsx"] = first_column_report_artifact.key
             payload["summary"]["column_error_report_download_path"] = artifact_download_path(
-                column_report_artifact.key
+                first_column_report_artifact.key
             )
+            payload["summary"]["column_error_report_xlsx_files"] = [
+                artifact.key for artifact in column_report_artifacts
+            ]
+            payload["summary"]["column_error_report_download_paths"] = [
+                artifact_download_path(artifact.key) for artifact in column_report_artifacts
+            ]
         return batch_report_artifact
+
+
+def _report_paths(value: Path | str | list[Path | str]) -> list[Path]:
+    if isinstance(value, list):
+        return [Path(path) for path in value]
+    return [Path(value)]
 
 
 def refresh_running_job(*, dependencies, job_id: str) -> None:

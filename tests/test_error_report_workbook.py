@@ -35,6 +35,15 @@ def _manual_review_finding(column_name: str, row_index: int, value: str, message
     }
 
 
+def _assert_error_status_filter(sheet, ref: str) -> None:
+    assert sheet.auto_filter.ref == ref
+    assert len(sheet.auto_filter.filterColumn) == 1
+    filter_column = sheet.auto_filter.filterColumn[0]
+    assert filter_column.colId == 0
+    assert list(filter_column.filters.filter) == ["오류"]
+    assert filter_column.filters.blank is False
+
+
 def test_single_error_report_uses_requested_sheets_and_detail_columns(tmp_path) -> None:
     result = {
         "summary": {"dataset_name": "화성시_어린이보호구역.csv", "column_count": 2, "row_count": 2},
@@ -76,6 +85,7 @@ def test_single_error_report_uses_requested_sheets_and_detail_columns(tmp_path) 
         "오류",
         "금액 컬럼에 금액이 아닌 값이 있습니다., LLM 확인 결과 오류입니다.",
     ]
+    _assert_error_status_filter(workbook["컬럼별 데이터 오류 표시"], "D1:D3")
     assert [cell.value for cell in workbook["오류 상세"][1]] == [
         "데이터명",
         "컬럼명",
@@ -199,7 +209,9 @@ def test_batch_column_error_report_creates_one_sheet_per_dataset(tmp_path) -> No
         },
     ]
 
-    report_path = write_batch_column_error_report(entries=entries, output_dir=tmp_path)
+    report_paths = write_batch_column_error_report(entries=entries, output_dir=tmp_path)
+    assert len(report_paths) == 1
+    report_path = report_paths[0]
     workbook = load_workbook(report_path)
 
     assert report_path.suffix == ".xlsx"
@@ -225,6 +237,35 @@ def test_batch_column_error_report_creates_one_sheet_per_dataset(tmp_path) -> No
         "오류",
         "연락처 오류, LLM 확인 결과 오류입니다.",
     ]
+    _assert_error_status_filter(workbook["A.csv"], "D1:D3")
+    _assert_error_status_filter(workbook["B.csv"], "C1:C2")
+
+
+def test_batch_column_error_report_splits_every_thirty_datasets(tmp_path) -> None:
+    entries = [
+        {
+            "result": {
+                "summary": {"dataset_name": f"data-{index:02d}.csv", "column_count": 1, "row_count": 1},
+                "preview_headers": ["value"],
+                "findings": [_issue_finding("value", 1, str(index), "값 오류")],
+            },
+            "validation_rows": [{"value": str(index)}],
+        }
+        for index in range(1, 32)
+    ]
+
+    report_paths = write_batch_column_error_report(entries=entries, output_dir=tmp_path)
+
+    assert [path.name for path in report_paths] == [
+        "전체_컬럼별_데이터_오류_01.xlsx",
+        "전체_컬럼별_데이터_오류_02.xlsx",
+    ]
+    first_workbook = load_workbook(report_paths[0])
+    second_workbook = load_workbook(report_paths[1])
+    assert len(first_workbook.sheetnames) == 30
+    assert first_workbook.sheetnames[0] == "data-01.csv"
+    assert first_workbook.sheetnames[-1] == "data-30.csv"
+    assert second_workbook.sheetnames == ["data-31.csv"]
 
 
 def test_column_error_report_aggregates_multiple_column_errors_on_same_row(tmp_path) -> None:

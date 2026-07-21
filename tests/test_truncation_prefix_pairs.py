@@ -110,6 +110,76 @@ def test_local_prefix_truncation_is_disabled_for_business_name_columns() -> None
     assert findings == []
 
 
+def test_prefix_truncation_ignores_complete_short_category_values() -> None:
+    counter = Counter(
+        {
+            "순두부": 30,
+            "순두부찌개": 40,
+            "후라이드": 17,
+            "후라이드치킨": 30,
+        }
+    )
+
+    assert find_truncated_value_pairs(counter) == []
+
+
+def test_complete_short_category_values_are_not_local_truncation_findings() -> None:
+    column = ColumnProfile(
+        raw_name="품목명",
+        normalized_name="품목명",
+        source="response",
+        semantic_tags=["name"],
+        inferred_primitive_type="text",
+    )
+    rows = [
+        {"품목명": "순두부"},
+        {"품목명": "순두부찌개"},
+        {"품목명": "후라이드"},
+        {"품목명": "후라이드치킨"},
+    ]
+    findings = []
+
+    counts = apply_local_categorical_findings(
+        column=column,
+        rows=rows,
+        counter=Counter(row["품목명"] for row in rows),
+        findings=findings,
+    )
+
+    assert allows_local_prefix_truncation(column)
+    assert counts.truncated_count == 0
+    assert findings == []
+
+
+def test_unclosed_parentheses_are_reported_without_prefix_detector() -> None:
+    column = ColumnProfile(
+        raw_name="품목명",
+        normalized_name="품목명",
+        source="response",
+        semantic_tags=["name"],
+        inferred_primitive_type="text",
+    )
+    rows = [
+        {"품목명": "삼겹살(130g"},
+        {"품목명": "삼겹살(130g)"},
+    ]
+    findings = []
+
+    counts = apply_local_categorical_findings(
+        column=column,
+        rows=rows,
+        counter=Counter(row["품목명"] for row in rows),
+        findings=findings,
+    )
+
+    assert allows_local_prefix_truncation(column)
+    assert counts.truncated_count == 1
+    assert len(findings) == 1
+    assert findings[0].rule_id == "categorical_value_truncated"
+    assert findings[0].row_indexes == [1]
+    assert findings[0].evidence == ["detector:unclosed_delimiter"]
+
+
 def test_prefix_truncation_detects_single_char_entity_completion_with_competing_prefixes() -> None:
     counter = Counter(
         {

@@ -119,6 +119,46 @@ def test_terminal_question_mark_fragment_is_special_character_issue_for_structur
     assert findings[0].evidence == [value]
 
 
+def test_korean_business_name_terminal_punctuation_is_allowed() -> None:
+    values = ["까까 보까!", "머리해요!", "네일어때?"]
+    column = ColumnProfile(
+        raw_name="업소명",
+        normalized_name="업소명",
+        source="response",
+        semantic_tags=["name"],
+        assigned_rules=["required_value", "garbled_text", "whitespace_special_characters"],
+        inferred_primitive_type="text",
+        non_empty_count=len(values),
+        distinct_count=len(values),
+        sample_values=values,
+        top_values=[(value, 1) for value in values],
+    )
+
+    findings = validate_column(column, _dataset_meta(), [{"업소명": value} for value in values])
+
+    assert findings == []
+
+
+def test_parenthetical_korean_initials_in_business_name_are_allowed() -> None:
+    value = "막창집(ㅁㅊ집)"
+    column = ColumnProfile(
+        raw_name="업소명",
+        normalized_name="업소명",
+        source="response",
+        semantic_tags=["name"],
+        assigned_rules=["required_value", "garbled_text", "whitespace_special_characters"],
+        inferred_primitive_type="text",
+        non_empty_count=1,
+        distinct_count=1,
+        sample_values=[value],
+        top_values=[(value, 1)],
+    )
+
+    findings = validate_column(column, _dataset_meta(), [{"업소명": value}])
+
+    assert findings == []
+
+
 def test_terminal_question_mark_is_allowed_for_free_text_column() -> None:
     value = "운영 여부를 확인해야 하나요?"
     column = ColumnProfile(
