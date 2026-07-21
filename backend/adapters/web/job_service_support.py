@@ -9,6 +9,7 @@ from uuid import uuid4
 from backend.application.dto import AnalysisJob, AnalysisJobItem, ArtifactRef, PreparedDataset, job_timestamp
 from backend.config.reporting import REPORTS_DIR_NAME, RESULTS_DIR_NAME
 from backend.infrastructure.io.loaders.loading import iter_uploaded_rows
+from backend.infrastructure.reporting.workbooks import write_batch_column_error_report_archive
 
 
 def build_job_items(
@@ -161,26 +162,22 @@ def persist_batch_report(
                     output_dir=output_dir,
                 )
             )
-            column_report_artifacts = [
-                artifact_store.put_file(
-                    column_report_path,
-                    key=f"jobs/{job_id}/results/{column_report_path.name}",
-                    filename=column_report_path.name,
-                )
-                for column_report_path in column_report_paths
-            ]
-            if not column_report_artifacts:
+            if not column_report_paths:
                 return batch_report_artifact
-            first_column_report_artifact = column_report_artifacts[0]
-            payload["summary"]["column_error_report_xlsx"] = first_column_report_artifact.key
-            payload["summary"]["column_error_report_download_path"] = artifact_download_path(
-                first_column_report_artifact.key
+            column_report_download_path = _column_report_download_path(column_report_paths, output_dir)
+            column_report_artifact = artifact_store.put_file(
+                column_report_download_path,
+                key=f"jobs/{job_id}/results/{column_report_download_path.name}",
+                filename=column_report_download_path.name,
+                content_type="application/zip" if column_report_download_path.suffix.lower() == ".zip" else None,
             )
-            payload["summary"]["column_error_report_xlsx_files"] = [
-                artifact.key for artifact in column_report_artifacts
-            ]
+            payload["summary"]["column_error_report_xlsx"] = column_report_artifact.key
+            payload["summary"]["column_error_report_download_path"] = artifact_download_path(
+                column_report_artifact.key
+            )
+            payload["summary"]["column_error_report_xlsx_files"] = [column_report_artifact.key]
             payload["summary"]["column_error_report_download_paths"] = [
-                artifact_download_path(artifact.key) for artifact in column_report_artifacts
+                artifact_download_path(column_report_artifact.key)
             ]
         return batch_report_artifact
 
@@ -189,6 +186,12 @@ def _report_paths(value: Path | str | list[Path | str]) -> list[Path]:
     if isinstance(value, list):
         return [Path(path) for path in value]
     return [Path(value)]
+
+
+def _column_report_download_path(report_paths: list[Path], output_dir: Path) -> Path:
+    if len(report_paths) == 1:
+        return report_paths[0]
+    return write_batch_column_error_report_archive(report_paths=report_paths, output_dir=output_dir)
 
 
 def refresh_running_job(*, dependencies, job_id: str) -> None:
@@ -264,6 +267,7 @@ def _job_batch_column_report_entries(
             {
                 "result": normalized_result,
                 "validation_rows": list(iter_uploaded_rows(materialized_path)),
+                "source_display_name": job_item.display_name,
             }
         )
     return entries

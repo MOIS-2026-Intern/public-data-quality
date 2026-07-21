@@ -1,5 +1,6 @@
 from pathlib import Path
 import sys
+import zipfile
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
@@ -27,7 +28,11 @@ class _FakeQueue:
         return "task-1"
 
 
-def _dependencies(tmp_path: Path, queue: _FakeQueue) -> WebAdapterDependencies:
+def _dependencies(
+    tmp_path: Path,
+    queue: _FakeQueue,
+    write_column_report=write_batch_column_error_report,
+) -> WebAdapterDependencies:
     repository = SQLiteAnalysisJobRepository(tmp_path / "jobs.sqlite3")
     artifact_store = FilesystemArtifactStore(tmp_path / "artifacts")
     return WebAdapterDependencies(
@@ -35,7 +40,7 @@ def _dependencies(tmp_path: Path, queue: _FakeQueue) -> WebAdapterDependencies:
         validation_output_dir=lambda base_dir=None: Path(base_dir or tmp_path / "validation") / "validation",
         attach_report_paths=attach_report_paths,
         write_batch_error_report=write_batch_error_report,
-        write_batch_column_error_report=write_batch_column_error_report,
+        write_batch_column_error_report=write_column_report,
         public_download_name=lambda filename, default_suffix=".xlsx": filename,
         prepare_saved_dataset=lambda *args, **kwargs: [],
         prepare_url_datasets=lambda *args, **kwargs: [],
@@ -191,6 +196,84 @@ def test_async_job_service_finalizes_batch_column_error_report(monkeypatch, tmp_
     assert payload["summary"]["column_error_report_download_paths"] == [
         payload["summary"]["column_error_report_download_path"]
     ]
+
+
+def test_async_job_service_zips_split_batch_column_error_reports(monkeypatch, tmp_path) -> None:
+    queue = _FakeQueue()
+
+    def write_split_column_reports(*, entries, output_dir):
+        reports_dir = output_dir / "reports"
+        reports_dir.mkdir(parents=True, exist_ok=True)
+        first_report = reports_dir / "전체_컬럼별_데이터_오류_01.xlsx"
+        second_report = reports_dir / "archive_컬럼별_데이터_오류.xlsx"
+        first_report.write_bytes(b"first")
+        second_report.write_bytes(b"second")
+        return [first_report, second_report]
+
+    dependencies = _dependencies(tmp_path, queue, write_column_report=write_split_column_reports)
+    first_path = tmp_path / "first.csv"
+    second_path = tmp_path / "second.csv"
+    first_path.write_text("value\n1\n", encoding="utf-8")
+    second_path.write_text("value\n2\n", encoding="utf-8")
+    datasets = [
+        PreparedDataset(display_name="first.csv", path=first_path, source_type="file", response_type="csv"),
+        PreparedDataset(display_name="second.csv", path=second_path, source_type="file", response_type="csv"),
+    ]
+
+    monkeypatch.setattr(
+        job_service,
+        "run_pipeline",
+        lambda *, request, dependencies=None: PipelineRunResult(
+            response={
+                "summary": {
+                    "dataset_name": request.uploaded_dataset_name or "sample.csv",
+                    "column_count": 1,
+                    "row_count": 1,
+                    "finding_count": 0,
+                    "issue_finding_count": 0,
+                    "manual_review_finding_count": 0,
+                },
+                "preview_headers": ["value"],
+                "preview_rows": [{"value": "1"}],
+                "columns": [{"raw_name": "value"}],
+                "findings": [],
+            },
+            validation_rows=list(iter_uploaded_rows(request.uploaded_dataset_csv)),
+        ),
+    )
+
+    job = job_service.submit_analysis_job(
+        prepared_datasets=datasets,
+        request=PipelineExecutionRequest(),
+        dependencies=dependencies,
+    )
+    item_results = [
+        job_service.process_analysis_job_item(
+            job_id=job.job_id,
+            item_id=item.item_id,
+            dependencies=dependencies,
+        )
+        for item in job.items
+    ]
+    payload = job_service.finalize_analysis_job(
+        job_id=job.job_id,
+        item_results=item_results,
+        dependencies=dependencies,
+    )
+
+    column_report_key = payload["summary"]["column_error_report_xlsx"]
+    assert column_report_key.endswith("/전체_컬럼별_데이터_오류.zip")
+    assert payload["summary"]["column_error_report_xlsx_files"] == [column_report_key]
+    assert payload["summary"]["column_error_report_download_paths"] == [
+        payload["summary"]["column_error_report_download_path"]
+    ]
+    artifact = dependencies.artifact_store().resolve_download(column_report_key)
+    assert artifact.content_type == "application/zip"
+    with zipfile.ZipFile(artifact.path) as archive:
+        assert archive.namelist() == [
+            "전체_컬럼별_데이터_오류_01.xlsx",
+            "archive_컬럼별_데이터_오류.xlsx",
+        ]
 
 
 def test_public_job_payload_hides_api_key_and_source_artifact(tmp_path) -> None:

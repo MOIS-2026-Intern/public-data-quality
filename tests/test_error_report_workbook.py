@@ -268,6 +268,48 @@ def test_batch_column_error_report_splits_every_thirty_datasets(tmp_path) -> Non
     assert second_workbook.sheetnames == ["data-31.csv"]
 
 
+def test_batch_column_error_report_keeps_zip_members_in_dedicated_workbook(tmp_path) -> None:
+    ordinary_entries = [
+        {
+            "result": {
+                "summary": {"dataset_name": f"normal-{index:02d}.csv", "column_count": 1, "row_count": 1},
+                "preview_headers": ["value"],
+                "findings": [_issue_finding("value", 1, str(index), "값 오류")],
+            },
+            "validation_rows": [{"value": str(index)}],
+        }
+        for index in range(1, 31)
+    ]
+    zip_entries = [
+        {
+            "result": {
+                "summary": {"dataset_name": f"archive.zip/inner-{index}.csv", "column_count": 1, "row_count": 1},
+                "preview_headers": ["value"],
+                "findings": [_issue_finding("value", 1, str(index), "값 오류")],
+            },
+            "validation_rows": [{"value": str(index)}],
+            "source_display_name": f"archive.zip/inner-{index}.csv",
+        }
+        for index in range(1, 3)
+    ]
+
+    report_paths = write_batch_column_error_report(
+        entries=[*ordinary_entries[:29], *zip_entries, ordinary_entries[29]],
+        output_dir=tmp_path,
+    )
+
+    assert [path.name for path in report_paths] == [
+        "전체_컬럼별_데이터_오류.xlsx",
+        "archive_컬럼별_데이터_오류.xlsx",
+    ]
+    ordinary_workbook = load_workbook(report_paths[0])
+    zip_workbook = load_workbook(report_paths[1])
+    assert len(ordinary_workbook.sheetnames) == 30
+    assert ordinary_workbook.sheetnames[0] == "normal-01.csv"
+    assert ordinary_workbook.sheetnames[-1] == "normal-30.csv"
+    assert zip_workbook.sheetnames == ["inner-1.csv", "inner-2.csv"]
+
+
 def test_column_error_report_aggregates_multiple_column_errors_on_same_row(tmp_path) -> None:
     result = {
         "summary": {"dataset_name": "sample.csv", "column_count": 2, "row_count": 1},

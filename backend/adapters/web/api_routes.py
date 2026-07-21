@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import mimetypes
 import os
 import tempfile
 
@@ -79,7 +80,7 @@ def register_api_routes(app: Flask, dependencies: WebAdapterDependencies) -> Non
             report_path,
             as_attachment=True,
             download_name=_download_name(report_path.name, dependencies=dependencies),
-            mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            mimetype=mimetypes.guess_type(report_path.name)[0] or "application/octet-stream",
         )
 
     @app.get("/api/jobs/artifacts/download")

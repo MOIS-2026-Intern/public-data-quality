@@ -1,6 +1,11 @@
 import { useEffect, useState } from "react";
 import { displayValue } from "./common";
-import { getColumnErrorReportDownloadUrls, getReportDownloadUrl, ResultContent } from "./ResultContent";
+import {
+  getColumnErrorReportDownloadUrl,
+  getColumnErrorReportDownloadUrls,
+  getReportDownloadUrl,
+  ResultContent,
+} from "./ResultContent";
 
 function LoadingProgress({ progress }) {
   if (!progress?.visible) {
@@ -53,10 +58,28 @@ function filteredBatchEntries(items, searchQuery) {
 
 function BatchReportActions({ result }) {
   const downloadUrl = getReportDownloadUrl(result);
+  const columnErrorDownloadUrl = getColumnErrorReportDownloadUrl(result);
   const columnErrorDownloadUrls = getColumnErrorReportDownloadUrls(result);
-  if (!downloadUrl && !columnErrorDownloadUrls.length) {
+  if (!downloadUrl && !columnErrorDownloadUrl) {
     return null;
   }
+
+  const handleColumnErrorDownload = (event) => {
+    if (columnErrorDownloadUrls.length <= 1) {
+      return;
+    }
+    event.preventDefault();
+    columnErrorDownloadUrls.forEach((url, index) => {
+      window.setTimeout(() => {
+        const link = document.createElement("a");
+        link.href = url;
+        link.rel = "noopener";
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+      }, index * 150);
+    });
+  };
 
   return (
     <div className="report-actions">
@@ -65,17 +88,15 @@ function BatchReportActions({ result }) {
           전체 오류 리포트 다운로드
         </a>
       ) : null}
-      {columnErrorDownloadUrls.map((columnErrorDownloadUrl, index) => (
+      {columnErrorDownloadUrl ? (
         <a
           className="download-report-button"
           href={columnErrorDownloadUrl}
-          key={`${columnErrorDownloadUrl}-${index}`}
+          onClick={handleColumnErrorDownload}
         >
-          {columnErrorDownloadUrls.length === 1
-            ? "컬럼별 데이터 오류 다운로드"
-            : `컬럼별 데이터 오류 ${index + 1} 다운로드`}
+          컬럼별 데이터 오류 다운로드
         </a>
-      ))}
+      ) : null}
     </div>
   );
 }

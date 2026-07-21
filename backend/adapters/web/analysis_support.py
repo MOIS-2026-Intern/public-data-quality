@@ -9,6 +9,7 @@ from flask import abort
 from backend.application.dto import PipelineExecutionRequest, PreparedDataset
 from backend.config.pipeline import PIPELINE_PROGRESS_STEPS, REPORT_PROGRESS_STEP
 from backend.infrastructure.io.loaders.loading import iter_uploaded_rows
+from backend.infrastructure.reporting.workbooks import write_batch_column_error_report_archive
 
 from .dependencies import WebAdapterDependencies, default_web_dependencies
 from .pipeline_service import PipelineRunResult, run_pipeline
@@ -154,15 +155,17 @@ def _attach_batch_report_path(
     if prepared_datasets and not summary.get("column_error_report_xlsx"):
         column_report_entries = _prepared_batch_column_report_entries(items, prepared_datasets)
         if column_report_entries:
+            output_dir = resolved_dependencies.validation_output_dir()
             column_report_paths = _report_paths(
                 resolved_dependencies.write_batch_column_error_report(
                     entries=column_report_entries,
-                    output_dir=resolved_dependencies.validation_output_dir(),
+                    output_dir=output_dir,
                 )
             )
             if column_report_paths:
-                summary["column_error_report_xlsx"] = column_report_paths[0].name
-                summary["column_error_report_xlsx_files"] = [path.name for path in column_report_paths]
+                column_report_download_path = _column_report_download_path(column_report_paths, output_dir)
+                summary["column_error_report_xlsx"] = column_report_download_path.name
+                summary["column_error_report_xlsx_files"] = [column_report_download_path.name]
     return payload
 
 
@@ -216,6 +219,12 @@ def _report_paths(value: Path | str | list[Path | str]) -> list[Path]:
     return [Path(value)]
 
 
+def _column_report_download_path(report_paths: list[Path], output_dir: Path) -> Path:
+    if len(report_paths) == 1:
+        return report_paths[0]
+    return write_batch_column_error_report_archive(report_paths=report_paths, output_dir=output_dir)
+
+
 def _prepared_batch_column_report_entries(
     items: list[AnalysisItem],
     prepared_datasets: list[PreparedDataset],
@@ -238,6 +247,7 @@ def _prepared_batch_column_report_entries(
             {
                 "result": normalized_result,
                 "validation_rows": list(iter_uploaded_rows(dataset.path)),
+                "source_display_name": dataset.display_name,
             }
         )
     return entries

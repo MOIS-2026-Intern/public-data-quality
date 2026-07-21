@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 import sys
+import zipfile
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
@@ -12,10 +13,10 @@ from backend.application.dto import PipelineExecutionRequest
 from backend.infrastructure.io.sources import PreparedDataset
 
 
-def _dependencies(column_report_paths=None) -> WebAdapterDependencies:
+def _dependencies(column_report_paths=None, output_dir=None) -> WebAdapterDependencies:
     return WebAdapterDependencies(
         pipeline_analysis_use_case=lambda: None,
-        validation_output_dir=lambda base_dir=None: Path("/tmp"),
+        validation_output_dir=lambda base_dir=None: Path(output_dir or "/tmp"),
         attach_report_paths=lambda **kwargs: kwargs["response"],
         write_batch_error_report=lambda **kwargs: Path("/tmp/batch_report.xlsx"),
         write_batch_column_error_report=lambda **kwargs: (
@@ -108,6 +109,10 @@ def test_analyze_prepared_datasets_exposes_split_column_report_paths(tmp_path) -
         PreparedDataset(display_name="a.csv", path=first_path, source_type="file", response_type="csv"),
         PreparedDataset(display_name="b.csv", path=second_path, source_type="file", response_type="csv"),
     ]
+    first_report_path = tmp_path / "전체_컬럼별_데이터_오류_01.xlsx"
+    second_report_path = tmp_path / "전체_컬럼별_데이터_오류_02.xlsx"
+    first_report_path.write_bytes(b"first xlsx")
+    second_report_path.write_bytes(b"second xlsx")
 
     original = execution._analyze_dataset_item
     results = iter(
@@ -122,21 +127,21 @@ def test_analyze_prepared_datasets_exposes_split_column_report_paths(tmp_path) -
             prepared_datasets=datasets,
             options=PipelineExecutionRequest(),
             dependencies=_dependencies(
-                [
-                    Path("/tmp/전체_컬럼별_데이터_오류_01.xlsx"),
-                    Path("/tmp/전체_컬럼별_데이터_오류_02.xlsx"),
-                ]
+                [first_report_path, second_report_path],
+                output_dir=tmp_path,
             ),
         )
     finally:
         execution._analyze_dataset_item = original
 
     assert status_code == 200
-    assert payload["summary"]["column_error_report_xlsx"] == "전체_컬럼별_데이터_오류_01.xlsx"
-    assert payload["summary"]["column_error_report_xlsx_files"] == [
-        "전체_컬럼별_데이터_오류_01.xlsx",
-        "전체_컬럼별_데이터_오류_02.xlsx",
-    ]
+    assert payload["summary"]["column_error_report_xlsx"] == "전체_컬럼별_데이터_오류.zip"
+    assert payload["summary"]["column_error_report_xlsx_files"] == ["전체_컬럼별_데이터_오류.zip"]
+    with zipfile.ZipFile(tmp_path / "reports" / "전체_컬럼별_데이터_오류.zip") as archive:
+        assert archive.namelist() == [
+            "전체_컬럼별_데이터_오류_01.xlsx",
+            "전체_컬럼별_데이터_오류_02.xlsx",
+        ]
 
 
 def test_analyze_prepared_datasets_wraps_single_failure() -> None:

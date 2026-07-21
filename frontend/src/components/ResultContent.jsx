@@ -7,7 +7,7 @@ export function getReportDownloadUrl(result) {
 }
 
 export function getColumnErrorReportDownloadUrl(result) {
-  return getColumnErrorReportDownloadUrls(result)[0] || "";
+  return getSummaryReportDownloadUrl(result, "column_error_report");
 }
 
 export function getColumnErrorReportDownloadUrls(result) {

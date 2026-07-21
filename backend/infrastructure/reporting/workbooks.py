@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+import zipfile
 from pathlib import Path
 from typing import Any
 
@@ -8,6 +9,7 @@ from openpyxl import Workbook
 from openpyxl.utils import get_column_letter
 
 from backend.config.reporting import (
+    BATCH_COLUMN_ERROR_REPORT_ARCHIVE_FILENAME,
     BATCH_COLUMN_ERROR_REPORT_FILENAME,
     BATCH_REPORT_FILENAME,
     REPORTS_DIR_NAME,
@@ -79,6 +81,22 @@ def write_batch_error_report(
     return report_path
 
 
+def write_batch_column_error_report_archive(
+    *,
+    report_paths: list[Path],
+    output_dir: Path,
+) -> Path:
+    reports_dir = output_dir / REPORTS_DIR_NAME
+    reports_dir.mkdir(parents=True, exist_ok=True)
+
+    archive_path = unique_artifact_path(reports_dir, BATCH_COLUMN_ERROR_REPORT_ARCHIVE_FILENAME)
+    used_names: set[str] = set()
+    with zipfile.ZipFile(archive_path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+        for report_path in report_paths:
+            archive.write(report_path, arcname=_unique_archive_member_name(report_path.name, used_names))
+    return archive_path
+
+
 def write_batch_column_error_report(
     *,
     entries: list[dict[str, Any]],
@@ -95,42 +113,94 @@ def write_batch_column_error_report(
         workbook.save(report_path)
         return [report_path]
 
-    entry_chunks = list(_chunks(successful_entries, _BATCH_COLUMN_ERROR_REPORT_CHUNK_SIZE))
-    use_chunked_filename = len(entry_chunks) > 1
+    report_groups = _batch_column_error_report_groups(successful_entries)
+    ordinary_group_count = sum(1 for group in report_groups if group["kind"] == "ordinary")
     report_paths: list[Path] = []
-    for chunk_index, entry_chunk in enumerate(entry_chunks, start=1):
+    for group in report_groups:
         report_path = unique_artifact_path(
             reports_dir,
-            (
-                _batch_column_error_report_filename(chunk_index)
-                if use_chunked_filename
-                else BATCH_COLUMN_ERROR_REPORT_FILENAME
-            ),
+            _batch_column_error_report_group_filename(group, ordinary_group_count),
         )
-        workbook = Workbook()
-        used_titles: set[str] = set()
-        first_entry = entry_chunk[0]
-        first_sheet = workbook.active
-        first_sheet.title = _unique_sheet_title(_result_dataset_name(first_entry["result"]), used_titles)
-        _write_column_error_sheet(
-            first_sheet,
-            first_entry["result"],
-            list(first_entry.get("validation_rows") or []),
+        workbook = _build_column_error_workbook(
+            group["entries"],
+            prefer_archive_member_sheet_title=group["kind"] == "archive",
         )
-
-        for entry in entry_chunk[1:]:
-            sheet = workbook.create_sheet(
-                _unique_sheet_title(_result_dataset_name(entry["result"]), used_titles)
-            )
-            _write_column_error_sheet(
-                sheet,
-                entry["result"],
-                list(entry.get("validation_rows") or []),
-            )
-
         workbook.save(report_path)
         report_paths.append(report_path)
     return report_paths
+
+
+def _batch_column_error_report_groups(entries: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    archive_infos = [_archive_source_info(entry) for entry in entries]
+    archive_counts: dict[str, int] = {}
+    for archive_info in archive_infos:
+        if archive_info is None:
+            continue
+        archive_name, _ = archive_info
+        archive_counts[archive_name] = archive_counts.get(archive_name, 0) + 1
+
+    ordinary_entries: list[dict[str, Any]] = []
+    archive_entries_by_name: dict[str, list[dict[str, Any]]] = {}
+    for entry, archive_info in zip(entries, archive_infos, strict=False):
+        if archive_info is None or archive_counts[archive_info[0]] <= 1:
+            ordinary_entries.append(entry)
+            continue
+        archive_entries_by_name.setdefault(archive_info[0], []).append(entry)
+
+    groups: list[dict[str, Any]] = [
+        {"kind": "ordinary", "chunk_index": index, "entries": entry_chunk}
+        for index, entry_chunk in enumerate(
+            _chunks(ordinary_entries, _BATCH_COLUMN_ERROR_REPORT_CHUNK_SIZE),
+            start=1,
+        )
+    ]
+    groups.extend(
+        {"kind": "archive", "archive_name": archive_name, "entries": archive_entries}
+        for archive_name, archive_entries in archive_entries_by_name.items()
+    )
+    return groups
+
+
+def _build_column_error_workbook(
+    entries: list[dict[str, Any]],
+    *,
+    prefer_archive_member_sheet_title: bool = False,
+) -> Workbook:
+    workbook = Workbook()
+    used_titles: set[str] = set()
+    first_entry = entries[0]
+    first_sheet = workbook.active
+    first_sheet.title = _unique_sheet_title(
+        _entry_sheet_title(first_entry, prefer_archive_member=prefer_archive_member_sheet_title),
+        used_titles,
+    )
+    _write_column_error_sheet(
+        first_sheet,
+        first_entry["result"],
+        list(first_entry.get("validation_rows") or []),
+    )
+
+    for entry in entries[1:]:
+        sheet = workbook.create_sheet(
+            _unique_sheet_title(
+                _entry_sheet_title(entry, prefer_archive_member=prefer_archive_member_sheet_title),
+                used_titles,
+            )
+        )
+        _write_column_error_sheet(
+            sheet,
+            entry["result"],
+            list(entry.get("validation_rows") or []),
+        )
+    return workbook
+
+
+def _batch_column_error_report_group_filename(group: dict[str, Any], ordinary_group_count: int) -> str:
+    if group["kind"] == "archive":
+        return _archive_column_error_report_filename(str(group.get("archive_name") or "archive.zip"))
+    if ordinary_group_count > 1:
+        return _batch_column_error_report_filename(int(group.get("chunk_index") or 1))
+    return BATCH_COLUMN_ERROR_REPORT_FILENAME
 
 
 def _batch_column_error_report_filename(chunk_index: int) -> str:
@@ -138,8 +208,56 @@ def _batch_column_error_report_filename(chunk_index: int) -> str:
     return f"{path.stem}_{chunk_index:02d}{path.suffix}"
 
 
+def _unique_archive_member_name(filename: str, used_names: set[str]) -> str:
+    source = Path(filename)
+    candidate = source.name or "report.xlsx"
+    if candidate not in used_names:
+        used_names.add(candidate)
+        return candidate
+
+    stem = source.stem or "report"
+    suffix = source.suffix
+    index = 2
+    while True:
+        candidate = f"{stem}_{index}{suffix}"
+        if candidate not in used_names:
+            used_names.add(candidate)
+            return candidate
+        index += 1
+
+
+def _archive_column_error_report_filename(archive_name: str) -> str:
+    archive_stem = Path(str(archive_name).replace("\\", "/")).stem or "archive"
+    return _report_filename(f"{archive_stem}_컬럼별_데이터_오류.xlsx")
+
+
 def _chunks(items: list[dict[str, Any]], chunk_size: int) -> list[list[dict[str, Any]]]:
     return [items[index : index + chunk_size] for index in range(0, len(items), chunk_size)]
+
+
+def _entry_display_name(entry: dict[str, Any]) -> str:
+    return str(
+        entry.get("source_display_name")
+        or entry.get("display_name")
+        or _result_dataset_name(entry["result"])
+    )
+
+
+def _entry_sheet_title(entry: dict[str, Any], *, prefer_archive_member: bool) -> str:
+    if prefer_archive_member:
+        archive_info = _archive_source_info(entry)
+        if archive_info is not None:
+            _, member_name = archive_info
+            return member_name
+    return _result_dataset_name(entry["result"])
+
+
+def _archive_source_info(entry: dict[str, Any]) -> tuple[str, str] | None:
+    parts = [part for part in _entry_display_name(entry).replace("\\", "/").split("/") if part]
+    for index, part in enumerate(parts[:-1]):
+        if Path(part).suffix.lower() == ".zip":
+            return "/".join(parts[: index + 1]), "/".join(parts[index + 1 :]) or parts[-1]
+    return None
 
 
 def _write_summary_sheet(sheet, result: dict[str, Any], validation_rows: list[dict[str, str]]) -> None:
