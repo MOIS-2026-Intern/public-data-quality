@@ -109,8 +109,8 @@ def test_analyze_prepared_datasets_exposes_split_column_report_paths(tmp_path) -
         PreparedDataset(display_name="a.csv", path=first_path, source_type="file", response_type="csv"),
         PreparedDataset(display_name="b.csv", path=second_path, source_type="file", response_type="csv"),
     ]
-    first_report_path = tmp_path / "전체_컬럼별_데이터_오류_01.xlsx"
-    second_report_path = tmp_path / "전체_컬럼별_데이터_오류_02.xlsx"
+    first_report_path = tmp_path / "a.xlsx"
+    second_report_path = tmp_path / "b.xlsx"
     first_report_path.write_bytes(b"first xlsx")
     second_report_path.write_bytes(b"second xlsx")
 
@@ -139,8 +139,8 @@ def test_analyze_prepared_datasets_exposes_split_column_report_paths(tmp_path) -
     assert payload["summary"]["column_error_report_xlsx_files"] == ["전체_컬럼별_데이터_오류.zip"]
     with zipfile.ZipFile(tmp_path / "reports" / "전체_컬럼별_데이터_오류.zip") as archive:
         assert archive.namelist() == [
-            "전체_컬럼별_데이터_오류_01.xlsx",
-            "전체_컬럼별_데이터_오류_02.xlsx",
+            "a.xlsx",
+            "b.xlsx",
         ]
 
 

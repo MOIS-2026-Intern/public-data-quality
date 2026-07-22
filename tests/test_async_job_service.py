@@ -196,6 +196,66 @@ def test_async_job_service_finalizes_batch_column_error_report(monkeypatch, tmp_
     assert payload["summary"]["column_error_report_download_paths"] == [
         payload["summary"]["column_error_report_download_path"]
     ]
+    artifact = dependencies.artifact_store().resolve_download(payload["summary"]["column_error_report_xlsx"])
+    with zipfile.ZipFile(artifact.path) as archive:
+        assert archive.namelist() == ["first.xlsx", "second.xlsx"]
+
+
+def test_async_job_service_finalizes_when_last_item_finishes_without_chord_callback(monkeypatch, tmp_path) -> None:
+    queue = _FakeQueue()
+    dependencies = _dependencies(tmp_path, queue)
+    first_path = tmp_path / "first.csv"
+    second_path = tmp_path / "second.csv"
+    first_path.write_text("value\n1\n", encoding="utf-8")
+    second_path.write_text("value\n2\n", encoding="utf-8")
+    datasets = [
+        PreparedDataset(display_name="first.csv", path=first_path, source_type="file", response_type="csv"),
+        PreparedDataset(display_name="second.csv", path=second_path, source_type="file", response_type="csv"),
+    ]
+
+    monkeypatch.setattr(
+        job_service,
+        "run_pipeline",
+        lambda *, request, dependencies=None: PipelineRunResult(
+            response={
+                "summary": {
+                    "dataset_name": request.uploaded_dataset_name or "sample.csv",
+                    "column_count": 1,
+                    "row_count": 1,
+                    "finding_count": 0,
+                    "issue_finding_count": 0,
+                    "manual_review_finding_count": 0,
+                },
+                "preview_headers": ["value"],
+                "preview_rows": [{"value": "1"}],
+                "columns": [{"raw_name": "value"}],
+                "findings": [],
+            },
+            validation_rows=list(iter_uploaded_rows(request.uploaded_dataset_csv)),
+        ),
+    )
+
+    job = job_service.submit_analysis_job(
+        prepared_datasets=datasets,
+        request=PipelineExecutionRequest(),
+        dependencies=dependencies,
+    )
+
+    for item in job.items:
+        job_service.process_analysis_job_item(
+            job_id=job.job_id,
+            item_id=item.item_id,
+            dependencies=dependencies,
+        )
+
+    payload, stored_job = job_service.get_analysis_job_result(job.job_id, dependencies=dependencies)
+
+    assert payload is not None
+    assert payload["batch"] is True
+    assert isinstance(stored_job, AnalysisJob)
+    assert stored_job.status == "completed"
+    assert stored_job.batch_result_artifact is not None
+    assert payload["summary"]["column_error_report_xlsx"].endswith("/전체_컬럼별_데이터_오류.zip")
 
 
 def test_async_job_service_zips_split_batch_column_error_reports(monkeypatch, tmp_path) -> None:
@@ -204,8 +264,8 @@ def test_async_job_service_zips_split_batch_column_error_reports(monkeypatch, tm
     def write_split_column_reports(*, entries, output_dir):
         reports_dir = output_dir / "reports"
         reports_dir.mkdir(parents=True, exist_ok=True)
-        first_report = reports_dir / "전체_컬럼별_데이터_오류_01.xlsx"
-        second_report = reports_dir / "archive_컬럼별_데이터_오류.xlsx"
+        first_report = reports_dir / "first.xlsx"
+        second_report = reports_dir / "archive.xlsx"
         first_report.write_bytes(b"first")
         second_report.write_bytes(b"second")
         return [first_report, second_report]
@@ -270,10 +330,7 @@ def test_async_job_service_zips_split_batch_column_error_reports(monkeypatch, tm
     artifact = dependencies.artifact_store().resolve_download(column_report_key)
     assert artifact.content_type == "application/zip"
     with zipfile.ZipFile(artifact.path) as archive:
-        assert archive.namelist() == [
-            "전체_컬럼별_데이터_오류_01.xlsx",
-            "archive_컬럼별_데이터_오류.xlsx",
-        ]
+        assert archive.namelist() == ["first.xlsx", "archive.xlsx"]
 
 
 def test_public_job_payload_hides_api_key_and_source_artifact(tmp_path) -> None:

@@ -210,38 +210,37 @@ def test_batch_column_error_report_creates_one_sheet_per_dataset(tmp_path) -> No
     ]
 
     report_paths = write_batch_column_error_report(entries=entries, output_dir=tmp_path)
-    assert len(report_paths) == 1
-    report_path = report_paths[0]
-    workbook = load_workbook(report_path)
+    assert [path.name for path in report_paths] == ["A.xlsx", "B.xlsx"]
+    first_workbook = load_workbook(report_paths[0])
+    second_workbook = load_workbook(report_paths[1])
 
-    assert report_path.suffix == ".xlsx"
-    assert report_path.name == "전체_컬럼별_데이터_오류.xlsx"
-    assert workbook.sheetnames == ["A.csv", "B.csv"]
-    assert [cell.value for cell in workbook["A.csv"][1]] == [
+    assert first_workbook.sheetnames == ["A.csv"]
+    assert second_workbook.sheetnames == ["B.csv"]
+    assert [cell.value for cell in first_workbook["A.csv"][1]] == [
         "row_index",
         "시설명",
         "가격",
         "오류 여부",
         "오류 내용",
     ]
-    assert [cell.value for cell in workbook["A.csv"][3]] == [
+    assert [cell.value for cell in first_workbook["A.csv"][3]] == [
         2,
         "B",
         "메뉴삭제",
         "오류",
         "금액 오류, LLM 확인 결과 오류입니다.",
     ]
-    assert [cell.value for cell in workbook["B.csv"][2]] == [
+    assert [cell.value for cell in second_workbook["B.csv"][2]] == [
         1,
         "abc",
         "오류",
         "연락처 오류, LLM 확인 결과 오류입니다.",
     ]
-    _assert_error_status_filter(workbook["A.csv"], "D1:D3")
-    _assert_error_status_filter(workbook["B.csv"], "C1:C2")
+    _assert_error_status_filter(first_workbook["A.csv"], "D1:D3")
+    _assert_error_status_filter(second_workbook["B.csv"], "C1:C2")
 
 
-def test_batch_column_error_report_splits_every_thirty_datasets(tmp_path) -> None:
+def test_batch_column_error_report_creates_individual_files_for_regular_datasets(tmp_path) -> None:
     entries = [
         {
             "result": {
@@ -256,16 +255,11 @@ def test_batch_column_error_report_splits_every_thirty_datasets(tmp_path) -> Non
 
     report_paths = write_batch_column_error_report(entries=entries, output_dir=tmp_path)
 
-    assert [path.name for path in report_paths] == [
-        "전체_컬럼별_데이터_오류_01.xlsx",
-        "전체_컬럼별_데이터_오류_02.xlsx",
-    ]
+    assert [path.name for path in report_paths] == [f"data-{index:02d}.xlsx" for index in range(1, 32)]
     first_workbook = load_workbook(report_paths[0])
-    second_workbook = load_workbook(report_paths[1])
-    assert len(first_workbook.sheetnames) == 30
-    assert first_workbook.sheetnames[0] == "data-01.csv"
-    assert first_workbook.sheetnames[-1] == "data-30.csv"
-    assert second_workbook.sheetnames == ["data-31.csv"]
+    last_workbook = load_workbook(report_paths[-1])
+    assert first_workbook.sheetnames == ["data-01.csv"]
+    assert last_workbook.sheetnames == ["data-31.csv"]
 
 
 def test_batch_column_error_report_keeps_zip_members_in_dedicated_workbook(tmp_path) -> None:
@@ -299,14 +293,12 @@ def test_batch_column_error_report_keeps_zip_members_in_dedicated_workbook(tmp_p
     )
 
     assert [path.name for path in report_paths] == [
-        "전체_컬럼별_데이터_오류.xlsx",
-        "archive_컬럼별_데이터_오류.xlsx",
+        *[f"normal-{index:02d}.xlsx" for index in range(1, 31)],
+        "archive.xlsx",
     ]
     ordinary_workbook = load_workbook(report_paths[0])
-    zip_workbook = load_workbook(report_paths[1])
-    assert len(ordinary_workbook.sheetnames) == 30
-    assert ordinary_workbook.sheetnames[0] == "normal-01.csv"
-    assert ordinary_workbook.sheetnames[-1] == "normal-30.csv"
+    zip_workbook = load_workbook(report_paths[-1])
+    assert ordinary_workbook.sheetnames == ["normal-01.csv"]
     assert zip_workbook.sheetnames == ["inner-1.csv", "inner-2.csv"]
 
 

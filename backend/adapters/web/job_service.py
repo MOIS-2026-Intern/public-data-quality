@@ -168,6 +168,7 @@ class AsyncAnalysisJobService:
                 )
                 repository.save_job_item(completed_item)
                 refresh_running_job(dependencies=self.dependencies, job_id=job_id)
+                self._finalize_job_if_ready(job_id=job_id)
                 return {
                     "ok": True,
                     "filename": completed_item.display_name,
@@ -187,6 +188,7 @@ class AsyncAnalysisJobService:
                     )
                 )
                 refresh_running_job(dependencies=self.dependencies, job_id=job_id)
+                self._finalize_job_if_ready(job_id=job_id)
                 return {"ok": False, "filename": running_item.display_name, "error": error_message}
 
     def finalize_job(self, *, job_id: str, item_results: list[dict[str, Any]] | None = None) -> dict[str, Any]:
@@ -195,6 +197,8 @@ class AsyncAnalysisJobService:
         job = repository.get_job(job_id)
         if job is None:
             raise ValueError(f"analysis job를 찾을 수 없습니다: {job_id}")
+        if job.batch_result_artifact is not None:
+            return artifact_store.read_json(job.batch_result_artifact.key)
 
         items_payload = build_items_payload(
             job.items,
@@ -237,6 +241,14 @@ class AsyncAnalysisJobService:
             )
         )
         return payload
+
+    def _finalize_job_if_ready(self, *, job_id: str) -> dict[str, Any] | None:
+        job = _job_repository(self.dependencies).get_job(job_id)
+        if job is None or job.batch_result_artifact is not None:
+            return None
+        if not job.items or any(item.status not in {"completed", "failed"} for item in job.items):
+            return None
+        return self.finalize_job(job_id=job_id)
 
     def resolve_artifact_download(self, key: str) -> ArtifactDownload:
         return _artifact_store(self.dependencies).resolve_download(key)

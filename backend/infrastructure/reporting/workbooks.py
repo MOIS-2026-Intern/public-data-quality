@@ -32,7 +32,6 @@ from .workbook_support import (
 from .artifacts import unique_artifact_path
 
 _SHEET_TITLE_UNSAFE_RE = re.compile(r"[\[\]:*?/\\]+")
-_BATCH_COLUMN_ERROR_REPORT_CHUNK_SIZE = 30
 
 
 def write_error_report(
@@ -113,13 +112,11 @@ def write_batch_column_error_report(
         workbook.save(report_path)
         return [report_path]
 
-    report_groups = _batch_column_error_report_groups(successful_entries)
-    ordinary_group_count = sum(1 for group in report_groups if group["kind"] == "ordinary")
     report_paths: list[Path] = []
-    for group in report_groups:
+    for group in _batch_column_error_report_groups(successful_entries):
         report_path = unique_artifact_path(
             reports_dir,
-            _batch_column_error_report_group_filename(group, ordinary_group_count),
+            _batch_column_error_report_group_filename(group),
         )
         workbook = _build_column_error_workbook(
             group["entries"],
@@ -132,28 +129,16 @@ def write_batch_column_error_report(
 
 def _batch_column_error_report_groups(entries: list[dict[str, Any]]) -> list[dict[str, Any]]:
     archive_infos = [_archive_source_info(entry) for entry in entries]
-    archive_counts: dict[str, int] = {}
-    for archive_info in archive_infos:
-        if archive_info is None:
-            continue
-        archive_name, _ = archive_info
-        archive_counts[archive_name] = archive_counts.get(archive_name, 0) + 1
 
-    ordinary_entries: list[dict[str, Any]] = []
+    ordinary_groups: list[dict[str, Any]] = []
     archive_entries_by_name: dict[str, list[dict[str, Any]]] = {}
     for entry, archive_info in zip(entries, archive_infos, strict=False):
-        if archive_info is None or archive_counts[archive_info[0]] <= 1:
-            ordinary_entries.append(entry)
+        if archive_info is None:
+            ordinary_groups.append({"kind": "ordinary", "entries": [entry]})
             continue
         archive_entries_by_name.setdefault(archive_info[0], []).append(entry)
 
-    groups: list[dict[str, Any]] = [
-        {"kind": "ordinary", "chunk_index": index, "entries": entry_chunk}
-        for index, entry_chunk in enumerate(
-            _chunks(ordinary_entries, _BATCH_COLUMN_ERROR_REPORT_CHUNK_SIZE),
-            start=1,
-        )
-    ]
+    groups: list[dict[str, Any]] = list(ordinary_groups)
     groups.extend(
         {"kind": "archive", "archive_name": archive_name, "entries": archive_entries}
         for archive_name, archive_entries in archive_entries_by_name.items()
@@ -195,17 +180,10 @@ def _build_column_error_workbook(
     return workbook
 
 
-def _batch_column_error_report_group_filename(group: dict[str, Any], ordinary_group_count: int) -> str:
+def _batch_column_error_report_group_filename(group: dict[str, Any]) -> str:
     if group["kind"] == "archive":
         return _archive_column_error_report_filename(str(group.get("archive_name") or "archive.zip"))
-    if ordinary_group_count > 1:
-        return _batch_column_error_report_filename(int(group.get("chunk_index") or 1))
-    return BATCH_COLUMN_ERROR_REPORT_FILENAME
-
-
-def _batch_column_error_report_filename(chunk_index: int) -> str:
-    path = Path(BATCH_COLUMN_ERROR_REPORT_FILENAME)
-    return f"{path.stem}_{chunk_index:02d}{path.suffix}"
+    return _entry_report_filename(group["entries"][0])
 
 
 def _unique_archive_member_name(filename: str, used_names: set[str]) -> str:
@@ -227,12 +205,7 @@ def _unique_archive_member_name(filename: str, used_names: set[str]) -> str:
 
 
 def _archive_column_error_report_filename(archive_name: str) -> str:
-    archive_stem = Path(str(archive_name).replace("\\", "/")).stem or "archive"
-    return _report_filename(f"{archive_stem}_컬럼별_데이터_오류.xlsx")
-
-
-def _chunks(items: list[dict[str, Any]], chunk_size: int) -> list[list[dict[str, Any]]]:
-    return [items[index : index + chunk_size] for index in range(0, len(items), chunk_size)]
+    return _report_filename(str(archive_name).replace("\\", "/"))
 
 
 def _entry_display_name(entry: dict[str, Any]) -> str:
@@ -250,6 +223,10 @@ def _entry_sheet_title(entry: dict[str, Any], *, prefer_archive_member: bool) ->
             _, member_name = archive_info
             return member_name
     return _result_dataset_name(entry["result"])
+
+
+def _entry_report_filename(entry: dict[str, Any]) -> str:
+    return _report_filename(_result_dataset_name(entry["result"]))
 
 
 def _archive_source_info(entry: dict[str, Any]) -> tuple[str, str] | None:
